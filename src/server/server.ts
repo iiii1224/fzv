@@ -180,7 +180,7 @@ export async function createViewer(options: ViewerOptions) {
         const body =
           url.pathname === '/api/project'
             ? catalog.project
-            : { project: catalog.project, files: await catalog.list() };
+            : { project: catalog.project, ...(await catalog.list()) };
         reply(
           req,
           res,

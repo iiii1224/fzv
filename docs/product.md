@@ -6,6 +6,7 @@
 - Description: The file viewer for agent-driven development.
 - Motivation: developers using coding agents in a CLI or desktop application still need to inspect project files and generated artifacts. Opening an IDE solely for that task introduces a separate development environment.
 - Initial scope: a local, read-only browser workspace for finding project files and previewing PDF, HTML, images, and text in persistent tabs.
+- Search opens as a modal with `f`, listing immediate root entries when empty. Directory selection fills its path and lists its immediate children; other queries fuzzy-match file and directory paths. File selection closes the modal. `r` reloads the active preview.
 - Initial distribution: one npm package invoked with `npx`; no Python, native addon, secondary download, or install-time build.
 
 ## Stack

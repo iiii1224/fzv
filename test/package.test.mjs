@@ -4,7 +4,7 @@ import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { mkdtemp, mkdir, readFile, rm } from 'node:fs/promises';
 import { once } from 'node:events';
-import { tmpdir } from 'node:os';
+import { networkInterfaces, tmpdir } from 'node:os';
 import path from 'node:path';
 import { createFixture } from './fixtures.mjs';
 import { VERSION } from '../dist/shared.js';
@@ -92,10 +92,14 @@ test(
       );
       assert.equal(invalid.code, 1);
       assert.match(invalid.stderr, /--port/);
-      child = spawn(process.execPath, [cli, '--port', '0'], {
-        cwd: fixture.root,
-        stdio: ['ignore', 'pipe', 'pipe'],
-      });
+      child = spawn(
+        process.execPath,
+        [cli, '--host', '0.0.0.0', '--port', '0'],
+        {
+          cwd: fixture.root,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        },
+      );
       let log = '';
       let stderr = '';
       child.stderr.on('data', (chunk) => {
@@ -133,6 +137,11 @@ test(
       assert.equal(index.project.name, 'project');
       assert.ok(index.files.some((file) => file.path === 'README.md'));
       assert.ok(log.includes(fixture.root));
+      const port = new URL(origin).port;
+      for (const entries of Object.values(networkInterfaces()))
+        for (const entry of entries ?? [])
+          if (entry.family === 'IPv4')
+            assert.ok(log.includes(`http://${entry.address}:${port}/`));
     } finally {
       if (child && child.exitCode === null) {
         child.kill('SIGTERM');

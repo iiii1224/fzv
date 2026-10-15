@@ -9,6 +9,12 @@ export interface ProjectFile {
   kind: PreviewKind;
   size: number;
 }
+export interface ProjectDirectory {
+  path: string;
+  name: string;
+  kind: 'directory';
+}
+export type ProjectEntry = ProjectFile | ProjectDirectory;
 export interface ProjectInfo {
   id: string;
   name: string;
@@ -17,4 +23,5 @@ export interface ProjectInfo {
 export interface FileIndex {
   project: ProjectInfo;
   files: ProjectFile[];
+  directories: ProjectDirectory[];
 }

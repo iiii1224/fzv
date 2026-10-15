@@ -4,7 +4,13 @@ import { open, readdir, realpath, stat } from 'node:fs/promises';
 import type { FileHandle } from 'node:fs/promises';
 import path from 'node:path';
 import { MAX_FILE_SIZE } from '../shared.js';
-import type { PreviewKind, ProjectFile, ProjectInfo } from '../shared.js';
+import type {
+  FileIndex,
+  PreviewKind,
+  ProjectDirectory,
+  ProjectFile,
+  ProjectInfo,
+} from '../shared.js';
 
 const TEXT = new Set([
   '.bib',
@@ -188,19 +194,28 @@ export class Catalog {
     }
   }
 
-  async list(): Promise<ProjectFile[]> {
+  async list(): Promise<Pick<FileIndex, 'files' | 'directories'>> {
     const files: ProjectFile[] = [];
+    const directories: ProjectDirectory[] = [];
     const pending = [''];
     while (pending.length) {
       const directory = pending.pop()!;
       let entries;
       try {
-        entries = await readdir(path.join(this.root, directory), {
+        const filename = await realpath(path.join(this.root, directory));
+        if (directory && !this.contained(filename)) continue;
+        entries = await readdir(filename, {
           withFileTypes: true,
         });
       } catch {
         continue;
       }
+      if (directory)
+        directories.push({
+          path: directory,
+          name: path.posix.basename(directory),
+          kind: 'directory',
+        });
       for (const entry of entries) {
         const relative = directory ? `${directory}/${entry.name}` : entry.name;
         if (!isVisibleRelative(relative)) continue;
@@ -227,6 +242,9 @@ export class Catalog {
         }
       }
     }
-    return files.sort((a, b) => a.path.localeCompare(b.path));
+    return {
+      files: files.sort((a, b) => a.path.localeCompare(b.path)),
+      directories: directories.sort((a, b) => a.path.localeCompare(b.path)),
+    };
   }
 }

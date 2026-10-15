@@ -2,6 +2,7 @@
 import { parseArgs } from 'node:util';
 import { createViewer } from './server.js';
 import { PRODUCT_NAME, VERSION } from '../shared.js';
+import { viewerUrls } from './network.js';
 
 const HELP = `${PRODUCT_NAME} — the file viewer for agent-driven development
 
@@ -54,16 +55,9 @@ async function main(): Promise<void> {
   server.listen(Number(values.port), values.host, () => {
     const address = server.address();
     if (!address || typeof address === 'string') return;
-    const displayHost =
-      values.host === '::'
-        ? '[::1]'
-        : values.host === '0.0.0.0'
-          ? '127.0.0.1'
-          : values.host!.includes(':')
-            ? `[${values.host}]`
-            : values.host;
+    const urls = viewerUrls(values.host!, address.port);
     console.log(
-      `\n  ${PRODUCT_NAME} ${VERSION}\n  Project  ${catalog.root}\n  Viewer   http://${displayHost}:${address.port}/\n\n  Press Ctrl+C to stop.\n`,
+      `\n  ${PRODUCT_NAME} ${VERSION}\n  Project  ${catalog.root}\n${urls.map((url) => `  Viewer   ${url}`).join('\n')}\n\n  Press Ctrl+C to stop.\n`,
     );
   });
   const stop = () => {

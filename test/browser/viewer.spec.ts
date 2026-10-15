@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import { once } from 'node:events';
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -27,19 +28,87 @@ test.afterAll(async () => {
 });
 test.beforeEach(async ({ page }) => {
   await page.goto(origin);
+  await expect(page.locator('#status-project')).toHaveText('project');
+  await page.keyboard.press('f');
   await expect(
     page.getByRole('button', { name: 'README.md', exact: true }),
   ).toBeVisible();
 });
+
+test('opens a minimal modal with root entries and drills into matching directories', async ({
+  page,
+}) => {
+  await expect(page.locator('#menu-toggle')).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: 'docs', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'docs/page.html', exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole('searchbox').fill('dcs');
+  await page.getByRole('button', { name: 'docs', exact: true }).click();
+  await expect(page.getByRole('searchbox')).toHaveValue('docs/');
+  await expect(page.getByRole('searchbox')).toBeFocused();
+  await expect(page.getByRole('tab')).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: 'docs/page.html', exact: true }),
+  ).toBeVisible();
+  await page.getByRole('searchbox').press('Enter');
+  await expect(page.getByRole('searchbox')).toHaveValue('docs/nested/');
+  await expect(page.locator('.no-results')).toBeVisible();
+  await page.getByRole('searchbox').press('Escape');
+  await expect(page.getByRole('dialog')).toBeHidden();
+  await expect(page.locator('#main')).toBeFocused();
+  await page.keyboard.press('f');
+  await expect(page.getByRole('searchbox')).toHaveValue('');
+  await page.getByRole('searchbox').press('ArrowDown');
+  await page.getByRole('searchbox').press('Enter');
+  await expect(page.getByRole('searchbox')).toHaveValue('empty-directory/');
+  await page
+    .getByRole('button', { name: 'Close file search', exact: true })
+    .click();
+  await page.keyboard.press('f');
+  await page.mouse.click(2, 2);
+  await expect(page.getByRole('dialog')).toBeHidden();
+});
+
+test('treats shortcut letters as text while searching and restores focus after opening a file', async ({
+  page,
+}) => {
+  await openFile(page, 'README.md');
+  await expect(
+    page.getByRole('tab', { name: 'README.md', exact: true }),
+  ).toBeFocused();
+  const requests: string[] = [];
+  page.on('request', (request) => requests.push(request.url()));
+  await page.keyboard.press('f');
+  await page.getByRole('searchbox').pressSequentially('rf');
+  await expect(page.getByRole('searchbox')).toHaveValue('rf');
+  await page.getByRole('searchbox').press('Escape');
+  expect(requests.filter((url) => url.includes('/file?'))).toEqual([]);
+  await page.keyboard.press('f');
+  await page.getByRole('searchbox').fill('hello 日本');
+  await page.getByRole('searchbox').press('Enter');
+  await expect(page.getByRole('dialog')).toBeHidden();
+  await expect(
+    page.getByRole('tab', { name: 'docs/hello world 日本語.txt' }),
+  ).toBeFocused();
+});
+
+async function openFile(page: Page, file: string): Promise<void> {
+  if (!(await page.getByRole('searchbox').isVisible()))
+    await page.keyboard.press('f');
+  await page.getByRole('searchbox').fill(file);
+  await page.getByRole('button', { name: file, exact: true }).click();
+  await expect(page.getByRole('dialog')).toBeHidden();
+}
 
 test('finds files, navigates results by keyboard, and safely renders text', async ({
   page,
 }) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
-  await expect(
-    page.getByRole('heading', { name: 'Project files, in focus.' }),
-  ).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Find a file' })).toBeVisible();
   await page.getByRole('searchbox').fill('hello 日本');
   await page.getByRole('searchbox').press('Enter');
   await expect(
@@ -48,6 +117,7 @@ test('finds files, navigates results by keyboard, and safely renders text', asyn
   await expect(page.locator('.text-preview')).toContainText(
     '<unsafe> is plain text.',
   );
+  await page.keyboard.press('f');
   await page.getByRole('searchbox').fill('script');
   await page.getByRole('searchbox').press('Enter');
   await expect(page.getByRole('tab', { name: 'x <script>.txt' })).toBeVisible();
@@ -59,13 +129,9 @@ test('finds files, navigates results by keyboard, and safely renders text', asyn
 test('persists tab order and selection and handles close and keyboard switching', async ({
   page,
 }) => {
-  await page.getByRole('button', { name: 'README.md', exact: true }).click();
-  await page
-    .getByRole('button', { name: 'docs/image.svg', exact: true })
-    .click();
-  await page
-    .getByRole('button', { name: 'docs/page.html', exact: true })
-    .click();
+  await openFile(page, 'README.md');
+  await openFile(page, 'docs/image.svg');
+  await openFile(page, 'docs/page.html');
   await page.getByRole('tab', { name: 'docs/image.svg', exact: true }).click();
   const before = await page.getByRole('tab').allTextContents();
   await page.reload();
@@ -93,9 +159,7 @@ test('persists tab order and selection and handles close and keyboard switching'
 test('loads HTML assets relative to the file and isolates scripts from the app', async ({
   page,
 }) => {
-  await page
-    .getByRole('button', { name: 'docs/page.html', exact: true })
-    .click();
+  await openFile(page, 'docs/page.html');
   const frame = page.frameLocator('iframe[title="docs/page.html"]');
   await expect(
     frame.getByRole('heading', { name: 'Relative HTML preview' }),
@@ -125,10 +189,8 @@ test('loads HTML assets relative to the file and isolates scripts from the app',
 test('zooms, drags, resets images, and reloads only the active file', async ({
   page,
 }) => {
-  await page.getByRole('button', { name: 'README.md', exact: true }).click();
-  await page
-    .getByRole('button', { name: 'docs/image.svg', exact: true })
-    .click();
+  await openFile(page, 'README.md');
+  await openFile(page, 'docs/image.svg');
   await page.getByRole('button', { name: 'Zoom in', exact: true }).click();
   await expect(page.locator('.image-zoom-value')).toHaveText('125%');
   const stage = page.locator('.image-stage');
@@ -147,9 +209,10 @@ test('zooms, drags, resets images, and reloads only the active file', async ({
   await writeFile(path.join(fixture.root, 'README.md'), '# Changed on disk\n');
   await page.getByRole('tab', { name: 'README.md' }).click();
   await expect(page.locator('.text-preview')).toContainText('Example project');
-  await page.getByRole('button', { name: 'Reload current file' }).click();
+  await page.keyboard.press('r');
   await expect(page.locator('.text-preview')).toHaveText('# Changed on disk\n');
   await expect(page.getByRole('tab')).toHaveCount(2);
+  await writeFile(path.join(fixture.root, 'README.md'), '# Example project\n');
 });
 test('requests PDFs and supports search toggling and refreshing added files', async ({
   page,
@@ -159,12 +222,9 @@ test('requests PDFs and supports search toggling and refreshing added files', as
       response.url().includes('/file?path=docs%2Fexample.pdf') &&
       response.request().method() === 'GET',
   );
-  await page
-    .getByRole('button', { name: 'docs/example.pdf', exact: true })
-    .click();
+  await openFile(page, 'docs/example.pdf');
   expect((await request).status()).toBe(200);
   await expect(page.locator('iframe[title="docs/example.pdf"]')).toBeVisible();
-  await page.getByRole('button', { name: 'Toggle file search' }).click();
   await expect(page.getByRole('searchbox')).toBeHidden();
   await page.getByRole('tab', { name: 'docs/example.pdf' }).focus();
   await page.keyboard.press('f');
@@ -180,7 +240,7 @@ test('remains usable on a narrow viewport', async ({ page }) => {
   await page.reload();
   await expect(page.getByRole('searchbox')).toBeHidden();
   await page.getByRole('button', { name: 'Find a file', exact: false }).click();
-  await page.getByRole('button', { name: 'README.md', exact: true }).click();
+  await openFile(page, 'README.md');
   await expect(page.getByRole('searchbox')).toBeHidden();
   await expect(page.locator('.text-preview')).toBeVisible();
   expect(
@@ -193,10 +253,8 @@ test('remains usable on a narrow viewport', async ({ page }) => {
 test('separates and restores project sessions when the same origin serves another root', async ({
   page,
 }) => {
-  await page.getByRole('button', { name: 'README.md', exact: true }).click();
-  await page
-    .getByRole('button', { name: 'docs/image.svg', exact: true })
-    .click();
+  await openFile(page, 'README.md');
+  await openFile(page, 'docs/image.svg');
   const address = server.address();
   if (!address || typeof address === 'string')
     throw new Error('Server did not start');
@@ -213,7 +271,7 @@ test('separates and restores project sessions when the same origin serves anothe
     await page.reload();
     await expect(page.locator('#project-name')).toHaveText('docs');
     await expect(page.getByRole('tab')).toHaveCount(0);
-    await page.getByRole('button', { name: 'image.svg', exact: true }).click();
+    await openFile(page, 'image.svg');
     await expect(page.getByRole('tab')).toHaveCount(1);
   } finally {
     await restart(fixture.root);

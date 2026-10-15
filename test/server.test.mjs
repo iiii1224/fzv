@@ -48,7 +48,19 @@ test('indexes supported files and excludes secrets, dependencies, oversized file
   ])
     assert.ok(!paths.includes(path), path);
   assert.ok(index.project.id);
+  assert.deepEqual(
+    index.directories.map((item) => item.path),
+    ['docs', 'docs/nested', 'empty-directory'],
+  );
+  assert.ok(index.directories.every((item) => item.kind === 'directory'));
   assert.equal(index.project.maxFileSize, 20 * 1024 * 1024);
+});
+test('directories cannot be served as files or HTML assets', async () => {
+  for (const path of ['docs', 'empty-directory', 'docs/nested']) {
+    assert.equal((await file(path)).status, 404);
+    assert.equal((await get('/asset/' + path)).status, 404);
+    assert.equal((await get('/preview-html?path=' + path)).status, 404);
+  }
 });
 test('uses stable project identifiers and separates different roots', async () => {
   const a = await Catalog.create(fixture.root);

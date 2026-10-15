@@ -6,6 +6,8 @@ export async function createFixture() {
   const base = await mkdtemp(path.join(tmpdir(), 'fzv-test-'));
   const root = path.join(base, 'project');
   await mkdir(path.join(root, 'docs'), { recursive: true });
+  await mkdir(path.join(root, 'empty-directory'), { recursive: true });
+  await mkdir(path.join(root, 'docs', 'nested'), { recursive: true });
   await mkdir(path.join(root, '.private'), { recursive: true });
   await mkdir(path.join(root, 'node_modules', 'dependency'), {
     recursive: true,

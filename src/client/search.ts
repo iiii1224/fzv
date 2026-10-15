@@ -1,7 +1,7 @@
-import type { ProjectFile } from '../shared.js';
+import type { ProjectEntry } from '../shared.js';
 
 interface IndexedFile {
-  file: ProjectFile;
+  file: ProjectEntry;
   chars: string[];
   lower: string[];
   bonuses: Int8Array;
@@ -12,7 +12,7 @@ interface Term {
   smartCase: boolean;
 }
 export interface SearchResults {
-  files: ProjectFile[];
+  files: ProjectEntry[];
   total: number;
 }
 
@@ -24,7 +24,7 @@ export class FuzzyIndex {
   private indexed: IndexedFile[];
   private a: Int32Array;
   private b: Int32Array;
-  constructor(files: ProjectFile[]) {
+  constructor(files: ProjectEntry[]) {
     let maxLength = 0;
     const isWord = (char: string) => /[\p{L}\p{N}]/u.test(char);
     const isLower = (char: string) =>
@@ -106,6 +106,30 @@ export class FuzzyIndex {
   }
 
   search(query: string, limit = 250): SearchResults {
+    const trimmed = query.trim();
+    const directory = trimmed.endsWith('/') ? trimmed.slice(0, -1) : '';
+    if (
+      !trimmed ||
+      this.indexed.some(
+        (item) =>
+          item.file.kind === 'directory' && item.file.path === directory,
+      )
+    ) {
+      const prefix = directory ? `${directory}/` : '';
+      const children = this.indexed
+        .map((item) => item.file)
+        .filter(
+          (file) =>
+            file.path.startsWith(prefix) &&
+            !file.path.slice(prefix.length).includes('/'),
+        )
+        .sort(
+          (a, b) =>
+            Number(b.kind === 'directory') - Number(a.kind === 'directory') ||
+            a.path.localeCompare(b.path),
+        );
+      return { files: children.slice(0, limit), total: children.length };
+    }
     const terms = query
       .trim()
       .split(/\s+/)
@@ -118,12 +142,7 @@ export class FuzzyIndex {
           smartCase: /[A-Z]/.test(text),
         };
       });
-    if (!terms.length)
-      return {
-        files: this.indexed.slice(0, limit).map((item) => item.file),
-        total: this.indexed.length,
-      };
-    const ranked: { file: ProjectFile; score: number }[] = [];
+    const ranked: { file: ProjectEntry; score: number }[] = [];
     for (const file of this.indexed) {
       let score = 0;
       for (const term of terms) {

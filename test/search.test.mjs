@@ -42,7 +42,7 @@ test('supports fuzzy subsequences, smart case, multiple terms, and unicode', () 
 });
 test('caps rendered results while keeping the full count and does not leak score buffers', () => {
   const large = new FuzzyIndex(
-    Array.from({ length: 500 }, (_, i) => file(`docs/file-${i}.txt`)),
+    Array.from({ length: 500 }, (_, i) => file(`file-${i}.txt`)),
   );
   assert.equal(large.search('').files.length, 250);
   assert.equal(large.search('').total, 500);
@@ -51,6 +51,33 @@ test('caps rendered results while keeping the full count and does not leak score
   index.search('Map');
   index.search('nonexistent');
   assert.deepEqual(index.search('main'), before);
+});
+test('shows immediate children for root and selected directories and fuzzy matches directories', () => {
+  const entries = new FuzzyIndex([
+    ...paths.map(file),
+    file('README.md'),
+    { path: 'docs', name: 'docs', kind: 'directory' },
+    { path: 'docs/empty', name: 'empty', kind: 'directory' },
+    { path: 'src', name: 'src', kind: 'directory' },
+  ]);
+  assert.deepEqual(
+    entries.search('').files.map((item) => item.path),
+    ['docs', 'src', 'README.md'],
+  );
+  assert.deepEqual(
+    entries.search('docs/').files.map((item) => item.path),
+    ['docs/empty', 'docs/main.md', 'docs/日本語ノート.txt'],
+  );
+  assert.deepEqual(entries.search('docs/empty/').files, []);
+  assert.ok(
+    entries
+      .search('dcs')
+      .files.some((item) => item.kind === 'directory' && item.path === 'docs'),
+  );
+  assert.deepEqual(
+    entries.search('docs/ma').files.map((item) => item.path),
+    ['docs/main.md'],
+  );
 });
 test('restores order, deduplicates tabs, separates projects, and tolerates malformed or denied storage', () => {
   const values = new Map();

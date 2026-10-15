@@ -1,6 +1,6 @@
 import './style.css';
 import { PRODUCT_NAME } from '../shared.js';
-import type { FileIndex, ProjectFile } from '../shared.js';
+import type { FileIndex, ProjectEntry, ProjectFile } from '../shared.js';
 import { FuzzyIndex } from './search.js';
 import { readSession, writeSession } from './session.js';
 import type { SessionStorage } from './session.js';
@@ -13,8 +13,7 @@ function byId<T extends HTMLElement>(id: string): T {
   return element as T;
 }
 const search = byId<HTMLInputElement>('search');
-const workspace = byId('workspace');
-const menu = byId<HTMLButtonElement>('menu-toggle');
+const searchPanel = byId<HTMLDialogElement>('search-panel');
 const results = byId('results');
 const count = byId('result-count');
 const tabbar = byId('tabbar');
@@ -35,7 +34,7 @@ interface Tab {
 let files: ProjectFile[] = [];
 let index = new FuzzyIndex([]);
 let projectId = '';
-let visible: ProjectFile[] = [];
+let visible: ProjectEntry[] = [];
 let highlighted = 0;
 let activePath: string | null = null;
 const tabs: Tab[] = [];
@@ -66,16 +65,6 @@ function save(): void {
       active: activePath,
     });
 }
-function symbol(file: ProjectFile): HTMLElement {
-  const span = document.createElement('span');
-  span.className = 'file-symbol';
-  span.dataset.kind = file.kind;
-  span.setAttribute('aria-hidden', 'true');
-  span.textContent = { pdf: 'PDF', html: '</>', image: 'IMG', text: 'TXT' }[
-    file.kind
-  ];
-  return span;
-}
 function renderResults(): void {
   const found = index.search(search.value);
   visible = found.files;
@@ -99,16 +88,13 @@ function renderResults(): void {
     text.className = 'result-text';
     const name = document.createElement('span');
     name.className = 'result-name';
-    name.textContent = file.name;
+    name.textContent = file.name + (file.kind === 'directory' ? '/' : '');
     const path = document.createElement('span');
     path.className = 'result-path';
     path.textContent = file.path;
     text.append(name, path);
-    button.append(symbol(file), text);
-    button.addEventListener('click', () => {
-      openTab(file);
-      if (window.innerWidth <= 540) setSearchOpen(false);
-    });
+    button.append(text);
+    button.addEventListener('click', () => selectEntry(file));
     return button;
   });
   results.replaceChildren(...nodes);
@@ -122,20 +108,32 @@ function renderResults(): void {
   }
   count.textContent = search.value.trim()
     ? `${found.total} match${found.total === 1 ? '' : 'es'}`
-    : `${found.total} file${found.total === 1 ? '' : 's'}`;
+    : `${found.total} item${found.total === 1 ? '' : 's'}`;
   if (found.total > visible.length)
     count.textContent += ` · showing ${visible.length}`;
 }
 function setSearchOpen(show: boolean): void {
-  workspace.classList.toggle('search-closed', !show);
-  menu.setAttribute('aria-expanded', String(show));
   if (show) {
+    search.value = '';
+    highlighted = 0;
+    if (!searchPanel.open) searchPanel.showModal();
     search.focus();
-    search.select();
-  }
+    renderResults();
+  } else searchPanel.close();
 }
 function focusSearch(): void {
   setSearchOpen(true);
+}
+function selectEntry(entry: ProjectEntry): void {
+  if (entry.kind === 'directory') {
+    search.value = `${entry.path}/`;
+    highlighted = 0;
+    search.focus();
+    renderResults();
+    return;
+  }
+  openTab(entry);
+  setSearchOpen(false);
 }
 
 function activate(path: string | null, persist = true): void {
@@ -231,7 +229,7 @@ function closeTab(path: string, focus = false): void {
   );
   if (focus)
     (
-      tabs.find((tab) => tab.file.path === activePath)?.button ?? search
+      tabs.find((tab) => tab.file.path === activePath)?.button ?? byId('main')
     ).focus();
 }
 function cycle(direction: number): void {
@@ -260,7 +258,7 @@ async function loadIndex(initial = false): Promise<void> {
     const data: FileIndex = await response.json();
     projectId = data.project.id;
     files = data.files;
-    index = new FuzzyIndex(files);
+    index = new FuzzyIndex([...data.directories, ...files]);
     byId('project-name').textContent = data.project.name;
     byId('status-project').textContent = data.project.name;
     if (initial) {
@@ -301,6 +299,11 @@ search.addEventListener('blur', () => {
     button.classList.remove('keyboard-selected');
 });
 search.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    setSearchOpen(false);
+    return;
+  }
   // A key can arrive before the next animation frame. Rank against the current query.
   if (['Enter', 'ArrowDown', 'ArrowUp'].includes(event.key)) {
     cancelAnimationFrame(renderFrame);
@@ -308,8 +311,7 @@ search.addEventListener('keydown', (event) => {
   }
   if (event.key === 'Enter' && visible[highlighted]) {
     event.preventDefault();
-    openTab(visible[highlighted]);
-    if (window.innerWidth <= 540) setSearchOpen(false);
+    selectEntry(visible[highlighted]);
   }
   if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
     event.preventDefault();
@@ -323,23 +325,24 @@ search.addEventListener('keydown', (event) => {
     renderResults();
     results.children[highlighted]?.scrollIntoView({ block: 'nearest' });
   }
-  if (event.key === 'Escape') {
-    event.preventDefault();
-    if (search.value) {
-      search.value = '';
-      highlighted = 0;
-      renderResults();
-    } else {
-      setSearchOpen(false);
-      (
-        tabs.find((tab) => tab.file.path === activePath)?.button ?? byId('main')
-      ).focus();
-    }
-  }
 });
-menu.addEventListener('click', () =>
-  setSearchOpen(workspace.classList.contains('search-closed')),
-);
+searchPanel.addEventListener('close', () => {
+  (
+    tabs.find((tab) => tab.file.path === activePath)?.button ?? byId('main')
+  ).focus();
+});
+searchPanel.addEventListener('click', (event) => {
+  if (event.target !== searchPanel) return;
+  const rect = searchPanel.getBoundingClientRect();
+  if (
+    event.clientX < rect.left ||
+    event.clientX > rect.right ||
+    event.clientY < rect.top ||
+    event.clientY > rect.bottom
+  )
+    setSearchOpen(false);
+});
+byId('close-search').addEventListener('click', () => setSearchOpen(false));
 byId('find-file').addEventListener('click', focusSearch);
 reload.addEventListener('click', reloadActive);
 refresh.addEventListener('click', () => {
@@ -349,6 +352,18 @@ window.addEventListener('keydown', (event) => {
   const typing = document.activeElement?.matches(
     'input,textarea,select,[contenteditable="true"]',
   );
+  if (
+    !typing &&
+    !searchPanel.open &&
+    !event.ctrlKey &&
+    !event.metaKey &&
+    !event.altKey &&
+    event.key.toLowerCase() === 'r'
+  ) {
+    event.preventDefault();
+    reloadActive();
+    return;
+  }
   if (
     !typing &&
     !event.ctrlKey &&
@@ -395,5 +410,4 @@ window.addEventListener('keydown', (event) => {
     }
   }
 });
-if (window.innerWidth <= 540) setSearchOpen(false);
 void loadIndex(true);
