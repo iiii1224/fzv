@@ -62,10 +62,12 @@ export function renderHtml(source: string, relative: string): string {
       : parent.split('/').map(encodeURIComponent).join('/') + '/');
   // The first base element wins. Insert ours before any user content, without parsing/replacing HTML with regex.
   // The same self-contained keyboard handler runs inside the opaque sandbox.
-  // Only two fixed shortcut messages cross to the parent; it validates the sender.
+  // Only fixed shortcut and focus messages cross to the parent; it validates the sender.
   const navigation = `<script>(${installNavigation.toString()})({
+    bridgeEditorGroups: true,
     onSearch: () => { if (parent !== window) parent.postMessage({type: 'fzv:shortcut', key: '/'}, '*'); },
-    onReload: () => { if (parent !== window) parent.postMessage({type: 'fzv:shortcut', key: 'r'}, '*'); }
+    onReload: () => { if (parent !== window) parent.postMessage({type: 'fzv:shortcut', key: 'r'}, '*'); },
+    onFocus: () => { if (parent !== window) parent.postMessage({type: 'fzv:focus'}, '*'); }
   });</script>`;
   return (
     `<!doctype html><base href="${base}">` +

@@ -26,6 +26,7 @@ export async function mountPdf(
   pane: HTMLElement,
   url: string,
   parentSignal: AbortSignal,
+  isActive: () => boolean,
 ): Promise<void> {
   const lifecycle = new AbortController();
   const signal = AbortSignal.any([parentSignal, lifecycle.signal]);
@@ -168,6 +169,7 @@ export async function mountPdf(
         event.defaultPrevented ||
         event.isComposing ||
         pane.hidden ||
+        !isActive() ||
         document.querySelector('dialog[open]') ||
         event.altKey ||
         !(event.ctrlKey || event.metaKey)

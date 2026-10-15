@@ -1,0 +1,113 @@
+.editor-area {
+  min-width: 0;
+}
+.editor-group {
+  position: absolute;
+  overflow: hidden;
+  background: var(--vscode-editor-background);
+}
+.group-header {
+  position: relative;
+  z-index: 2;
+  container-type: inline-size;
+}
+.editor-group.multiple .tabbar {
+  margin-right: 28px;
+}
+.group-focus {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 28px;
+  height: var(--editor-group-tab-height);
+  border: 0;
+  border-left: 1px solid var(--vscode-tab-border);
+  background: var(--vscode-editorGroupHeader-tabsBackground);
+  color: var(--vscode-descriptionForeground);
+  font: 11px var(--mono);
+  cursor: pointer;
+}
+.group-focus:hover,
+.editor-group.focused .group-focus {
+  color: var(--vscode-tab-activeForeground);
+  background: var(--vscode-tab-activeBackground);
+}
+.editor-group .empty-state {
+  top: 70px;
+}
+.editor-group.focused .tabbar {
+  box-shadow: inset 0 -1px var(--vscode-focusBorder);
+}
+.editor-group:not(.focused) .tab.active {
+  background: var(
+    --vscode-tab-unfocusedActiveBackground,
+    var(--vscode-tab-activeBackground)
+  );
+  color: var(
+    --vscode-tab-unfocusedActiveForeground,
+    var(--vscode-tab-activeForeground)
+  );
+}
+.editor-group:not(.focused) .tab.active::before {
+  background: var(--vscode-tab-unfocusedActiveBorderTop, transparent);
+}
+.editor-area > .preview-pane {
+  right: auto;
+  bottom: auto;
+  z-index: 1;
+}
+/* Keep native drag hit testing in the parent, including opaque iframe surfaces. */
+.editor-area.dragging-tab iframe {
+  pointer-events: none;
+}
+.editor-sash {
+  position: absolute;
+  z-index: 5;
+  background: var(--vscode-editorGroup-border);
+  touch-action: none;
+}
+.editor-sash[data-axis='x'] {
+  cursor: col-resize;
+}
+.editor-sash[data-axis='y'] {
+  cursor: row-resize;
+}
+.editor-sash:is(:hover, :focus-visible, .resizing) {
+  background: var(--vscode-sash-hoverBorder, var(--vscode-focusBorder));
+}
+.editor-drag-surface,
+.editor-resize-surface {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+}
+.editor-resize-surface {
+  z-index: 6;
+}
+.editor-drop-highlight {
+  position: absolute;
+  pointer-events: none;
+  background: var(--vscode-editor-dropBackground, #2676c833);
+  border: 1px solid var(--vscode-focusBorder);
+}
+.editor-drop-highlight.tab-insertion {
+  background: var(--vscode-focusBorder);
+  border: 0;
+}
+.tab[draggable='true'] {
+  cursor: grab;
+}
+@container (max-width: 460px) {
+  .preview-toolbar {
+    gap: 4px;
+    padding-inline: 5px;
+  }
+  .preview-actions {
+    gap: 3px;
+    margin-left: auto;
+  }
+  .preview-toolbar .toolbar-button > span,
+  .preview-toolbar .current-path {
+    display: none;
+  }
+}

@@ -2,6 +2,7 @@
 @import url('./vendor/vscode/tabs.css');
 @import url('./vendor/vscode/quickInput.css');
 @import url('./workspace.css');
+@import url('./groups.css');
 :root {
   color-scheme: light;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -346,7 +347,7 @@ kbd {
   background: var(--vscode-editor-background);
   padding: 0 12px;
 }
-#current-path {
+.current-path {
   flex: 1;
   min-width: 0;
   text-overflow: ellipsis;

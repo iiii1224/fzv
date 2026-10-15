@@ -16,6 +16,7 @@ export function defaultPreviewMode(file: ProjectFile): PreviewMode {
 
 export interface PreviewPane {
   element: HTMLElement;
+  setActive(active: boolean): void;
   setMode?(mode: PreviewMode): void;
   dispose(): void;
 }
@@ -46,6 +47,7 @@ export function createPreview(
   element.setAttribute('role', 'tabpanel');
   element.setAttribute('aria-label', file.path);
   const controller = new AbortController();
+  let active = false;
   const signal = controller.signal;
   const url = fileUrl(file, revision);
   let setMode: PreviewPane['setMode'];
@@ -136,7 +138,8 @@ export function createPreview(
     element.textContent = 'Loading…';
     void import('./pdf.js')
       .then(({ mountPdf }) => {
-        if (!signal.aborted) return mountPdf(element, url, signal);
+        if (!signal.aborted)
+          return mountPdf(element, url, signal, () => active);
       })
       .catch((error) => {
         if (!signal.aborted)
@@ -259,6 +262,9 @@ export function createPreview(
   }
   return {
     element,
+    setActive: (value) => {
+      active = value;
+    },
     setMode,
     dispose: () => {
       controller.abort();

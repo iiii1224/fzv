@@ -5,14 +5,8 @@ import type { FileIndex, ProjectEntry, ProjectFile } from '../shared.js';
 import { FuzzyIndex } from './search.js';
 import { readSession, writeSession } from './session.js';
 import type { SessionStorage } from './session.js';
-import {
-  createPreview,
-  defaultPreviewMode,
-  fileUrl,
-  hasViewer,
-} from './preview.js';
-import type { PreviewMode, PreviewPane } from './preview.js';
-import { fileIcon, icon } from './icons.js';
+import { Workspace } from './workspace.js';
+import { fileIcon } from './icons.js';
 import { initializeTheme } from './theme.js';
 import { installNavigation } from '../navigation.js';
 
@@ -25,35 +19,14 @@ const search = byId<HTMLInputElement>('search');
 const searchPanel = byId<HTMLDialogElement>('search-panel');
 const results = byId('results');
 const count = byId('result-count');
-const tabbar = byId('tabbar');
-const preview = byId('preview');
-const empty = byId('empty-state');
-const noTabs = byId('no-tabs');
-const currentPath = byId('current-path');
-const reload = byId<HTMLButtonElement>('reload-file');
-const open = byId<HTMLAnchorElement>('open-file');
-const previewModes = byId('preview-modes');
-const viewerMode = byId<HTMLButtonElement>('viewer-mode');
-const sourceMode = byId<HTMLButtonElement>('source-mode');
 const refresh = byId<HTMLButtonElement>('refresh-files');
 const notification = byId('notification');
 initializeTheme(byId<HTMLButtonElement>('theme-toggle'));
-interface Tab {
-  file: ProjectFile;
-  pane: PreviewPane;
-  element: HTMLElement;
-  button: HTMLButtonElement;
-  mode: PreviewMode;
-}
 let files: ProjectFile[] = [];
 let index = new FuzzyIndex([]);
 let projectId = '';
 let visible: ProjectEntry[] = [];
 let highlighted = 0;
-let activePath: string | null = null;
-const tabs: Tab[] = [];
-let revision = 0;
-let tabSequence = 0;
 let notificationTimer: ReturnType<typeof setTimeout> | undefined;
 let renderFrame = 0;
 let storage: SessionStorage | undefined;
@@ -73,11 +46,7 @@ function notify(message: string): void {
 }
 function save(): void {
   if (storage && projectId)
-    writeSession(storage, projectId, {
-      version: 1,
-      tabs: tabs.map((tab) => tab.file.path),
-      active: activePath,
-    });
+    writeSession(storage, projectId, workspace.snapshot());
 }
 function renderResults(): void {
   const found = index.search(search.value);
@@ -92,12 +61,16 @@ function renderResults(): void {
     button.className = 'result monaco-list-row quick-input-list-entry';
     button.title = file.path;
     button.setAttribute('aria-label', file.path);
-    button.classList.toggle('active', file.path === activePath);
+    button.classList.toggle(
+      'active',
+      file.path === workspace.activeTab?.file.path,
+    );
     button.classList.toggle(
       'keyboard-selected',
       i === highlighted && document.activeElement === search,
     );
-    if (file.path === activePath) button.setAttribute('aria-current', 'true');
+    if (file.path === workspace.activeTab?.file.path)
+      button.setAttribute('aria-current', 'true');
     const text = document.createElement('span');
     text.className = 'result-text';
     const name = document.createElement('span');
@@ -127,9 +100,7 @@ function renderResults(): void {
     count.textContent += ` · showing ${visible.length}`;
 }
 function restorePreviewFocus(): void {
-  (
-    tabs.find((tab) => tab.file.path === activePath)?.button ?? byId('main')
-  ).focus();
+  workspace.focus();
 }
 function setSearchOpen(show: boolean): void {
   navigation.cancel();
@@ -157,139 +128,10 @@ function selectEntry(entry: ProjectEntry): void {
     renderResults();
     return;
   }
-  openTab(entry);
+  workspace.open(entry);
   setSearchOpen(false);
 }
 
-function activate(path: string | null, persist = true): void {
-  navigation.cancel();
-  const active = tabs.find((tab) => tab.file.path === path);
-  activePath = active?.file.path ?? null;
-  for (const tab of tabs) {
-    const selected = tab === active;
-    tab.pane.element.hidden = !selected;
-    tab.element.classList.toggle('active', selected);
-    tab.button.setAttribute('aria-selected', String(selected));
-    tab.button.tabIndex = selected ? 0 : -1;
-  }
-  empty.hidden = Boolean(active);
-  noTabs.hidden = tabs.length > 0;
-  currentPath.textContent = active?.file.path ?? 'Ready when you are';
-  currentPath.title = active?.file.path ?? '';
-  reload.disabled = !active;
-  open.hidden = !active;
-  previewModes.hidden = !active || !hasViewer(active.file);
-  viewerMode.setAttribute('aria-pressed', String(active?.mode === 'viewer'));
-  sourceMode.setAttribute('aria-pressed', String(active?.mode === 'source'));
-  if (active) {
-    open.href = fileUrl(active.file, revision);
-    active.element.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    document.title = `${active.file.name} — ${PRODUCT_NAME}`;
-  } else document.title = PRODUCT_NAME;
-  byId('tab-count').textContent =
-    `${tabs.length} open tab${tabs.length === 1 ? '' : 's'}`;
-  renderResults();
-  if (persist) save();
-}
-function makeTab(file: ProjectFile): Tab {
-  const pane = createPreview(file);
-  const id = `file-tab-${++tabSequence}`;
-  pane.element.id = `${id}-panel`;
-  pane.element.setAttribute('aria-labelledby', id);
-  preview.append(pane.element);
-  const element = document.createElement('div');
-  element.className = 'tab';
-  element.setAttribute('role', 'presentation');
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.className = 'tab-select tab-label';
-  button.setAttribute('role', 'tab');
-  button.id = id;
-  const name = document.createElement('span');
-  name.textContent = file.name;
-  button.append(fileIcon(file), name);
-  button.title = file.path;
-  button.setAttribute('aria-label', file.path);
-  button.setAttribute('aria-controls', pane.element.id);
-  button.addEventListener('click', () => activate(file.path));
-  button.addEventListener('keydown', (event) => {
-    let next = -1;
-    const current = tabs.findIndex((tab) => tab.file.path === file.path);
-    if (event.key === 'ArrowRight') next = (current + 1) % tabs.length;
-    if (event.key === 'ArrowLeft')
-      next = (current - 1 + tabs.length) % tabs.length;
-    if (event.key === 'Home') next = 0;
-    if (event.key === 'End') next = tabs.length - 1;
-    if (event.key === 'Delete') {
-      event.preventDefault();
-      closeTab(file.path, true);
-      return;
-    }
-    if (next >= 0) {
-      event.preventDefault();
-      activate(tabs[next].file.path);
-      tabs[next].button.focus();
-    }
-  });
-  const close = document.createElement('button');
-  close.type = 'button';
-  close.className = 'tab-close';
-  close.append(icon('close'));
-  close.setAttribute('aria-label', `Close ${file.path}`);
-  close.title = 'Close tab';
-  close.addEventListener('click', () => closeTab(file.path, true));
-  element.append(button, close);
-  tabbar.append(element);
-  return { file, pane, element, button, mode: defaultPreviewMode(file) };
-}
-function openTab(file: ProjectFile): void {
-  if (!tabs.some((tab) => tab.file.path === file.path))
-    tabs.push(makeTab(file));
-  activate(file.path);
-}
-function closeTab(path: string, focus = false): void {
-  const i = tabs.findIndex((tab) => tab.file.path === path);
-  if (i < 0) return;
-  const [removed] = tabs.splice(i, 1);
-  removed.pane.dispose();
-  removed.element.remove();
-  activate(
-    path === activePath
-      ? (tabs[Math.min(i, tabs.length - 1)]?.file.path ?? null)
-      : activePath,
-  );
-  if (focus)
-    (
-      tabs.find((tab) => tab.file.path === activePath)?.button ?? byId('main')
-    ).focus();
-}
-function cycle(direction: number): void {
-  if (!tabs.length) return;
-  const i = tabs.findIndex((tab) => tab.file.path === activePath);
-  activate(tabs[(i + direction + tabs.length) % tabs.length].file.path);
-}
-function reloadActive(): void {
-  navigation.cancel();
-  const tab = tabs.find((tab) => tab.file.path === activePath);
-  if (!tab) return;
-  const pane = createPreview(tab.file, ++revision, tab.mode);
-  pane.element.id = tab.pane.element.id;
-  pane.element.setAttribute('aria-labelledby', tab.button.id);
-  tab.pane.dispose();
-  tab.pane = pane;
-  preview.append(pane.element);
-  pane.element.hidden = false;
-  open.href = fileUrl(tab.file, revision);
-}
-function setPreviewMode(mode: PreviewMode): void {
-  navigation.cancel();
-  const tab = tabs.find((tab) => tab.file.path === activePath);
-  if (!tab?.pane.setMode || !hasViewer(tab.file)) return;
-  tab.mode = mode;
-  tab.pane.setMode(mode);
-  viewerMode.setAttribute('aria-pressed', String(mode === 'viewer'));
-  sourceMode.setAttribute('aria-pressed', String(mode === 'source'));
-}
 async function loadIndex(initial = false): Promise<void> {
   refresh.disabled = true;
   count.textContent = 'Loading files…';
@@ -304,20 +146,11 @@ async function loadIndex(initial = false): Promise<void> {
     byId('status-project').textContent = data.project.name;
     if (initial) {
       const saved = storage ? readSession(storage, projectId) : null;
-      const byPath = new Map(files.map((file) => [file.path, file]));
-      for (const path of saved?.tabs ?? []) {
-        const file = byPath.get(path);
-        if (file) tabs.push(makeTab(file));
-      }
-      activate(
-        tabs.find((tab) => tab.file.path === saved?.active)?.file.path ??
-          tabs[0]?.file.path ??
-          null,
-      );
+      workspace.restore(saved, files);
     } else {
       const available = new Set(files.map((file) => file.path));
-      for (const tab of [...tabs])
-        if (!available.has(tab.file.path)) closeTab(tab.file.path);
+      for (const tab of workspace.tabs)
+        if (!available.has(tab.file.path)) workspace.close(tab);
       renderResults();
       notify('File list refreshed.');
     }
@@ -387,9 +220,6 @@ searchPanel.addEventListener('click', (event) => {
 });
 byId('close-search').addEventListener('click', () => setSearchOpen(false));
 byId('find-file').addEventListener('click', focusSearch);
-reload.addEventListener('click', reloadActive);
-viewerMode.addEventListener('click', () => setPreviewMode('viewer'));
-sourceMode.addEventListener('click', () => setPreviewMode('source'));
 refresh.addEventListener('click', () => {
   void loadIndex();
 });
@@ -407,15 +237,32 @@ window.addEventListener('keydown', (event) => {
     ['j', 'k'].includes(event.key.toLowerCase())
   ) {
     event.preventDefault();
-    cycle(event.key.toLowerCase() === 'j' ? 1 : -1);
+    workspace.cycle(event.key.toLowerCase() === 'j' ? 1 : -1);
     return;
   }
   if (event.ctrlKey && event.key === 'Tab') {
     event.preventDefault();
-    cycle(event.shiftKey ? -1 : 1);
+    workspace.cycle(event.shiftKey ? -1 : 1);
     return;
   }
-  const active = tabs.find((tab) => tab.file.path === activePath);
+  if (
+    !typing &&
+    (event.ctrlKey || event.metaKey) &&
+    !event.altKey &&
+    !searchPanel.open
+  ) {
+    if (event.code === 'Backslash') {
+      event.preventDefault();
+      workspace.splitActive(event.shiftKey ? 'down' : 'right');
+      return;
+    }
+    if (/^[1-9]$/.test(event.key)) {
+      event.preventDefault();
+      workspace.focusGroup(Number(event.key) - 1);
+      return;
+    }
+  }
+  const active = workspace.activeTab;
   if (
     !typing &&
     (event.ctrlKey || event.metaKey) &&
@@ -437,12 +284,22 @@ window.addEventListener('keydown', (event) => {
 });
 const navigation = installNavigation({
   onSearch: focusSearch,
+  onHintActivate: (target) => {
+    if (
+      !(target instanceof HTMLIFrameElement) ||
+      !workspace.frameTab(target.contentWindow)
+    )
+      return false;
+    workspace.activateFrame(target);
+    target.contentWindow?.postMessage({ type: 'fzv:show-hints' }, '*');
+    return true;
+  },
   onReload: () => {
-    if (!searchPanel.open) reloadActive();
+    if (!searchPanel.open) workspace.reload();
   },
   getScrollRoot: () => {
     if (searchPanel.open) return results;
-    const active = tabs.find((tab) => tab.file.path === activePath);
+    const active = workspace.activeTab;
     return (
       [
         ...(active?.pane.element.querySelectorAll<HTMLElement>(
@@ -452,19 +309,32 @@ const navigation = installNavigation({
     );
   },
 });
+const workspace = new Workspace(byId('preview'), () => {
+  navigation.cancel();
+  const active = workspace.activeTab;
+  document.title = active
+    ? `${active.file.name} — ${PRODUCT_NAME}`
+    : PRODUCT_NAME;
+  const count = workspace.tabs.length;
+  byId('tab-count').textContent = `${count} open tab${count === 1 ? '' : 's'}`;
+  renderResults();
+  save();
+});
 window.addEventListener('message', (event) => {
-  const active = tabs.find((tab) => tab.file.path === activePath);
-  const frame = active?.pane.element.querySelector('iframe');
-  if (
-    !frame ||
-    event.source !== frame.contentWindow ||
-    event.origin !== 'null' ||
-    active?.file.kind !== 'html' ||
-    active.mode !== 'viewer'
-  )
+  if (event.origin !== 'null') return;
+  const tab = workspace.frameTab(event.source);
+  if (!tab) return;
+  if (event.data?.type === 'fzv:focus') {
+    workspace.activateFrame(tab.pane.element.querySelector('iframe'));
     return;
-  if (event.data?.type !== 'fzv:shortcut') return;
+  }
+  if (tab !== workspace.activeTab || event.data?.type !== 'fzv:shortcut')
+    return;
   if (event.data.key === '/') focusSearch();
-  if (event.data.key === 'r') reloadActive();
+  if (event.data.key === 'r') workspace.reload();
+  if (event.data.key === 'f' && !searchPanel.open) {
+    workspace.focus();
+    navigation.showHints();
+  }
 });
 void loadIndex(true);

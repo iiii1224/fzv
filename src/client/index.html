@@ -32,74 +32,10 @@
     <div class="workspace" id="workspace">
       <main id="main" class="main" tabindex="-1">
         <div
-          id="tabbar"
-          class="tabbar tabs-container"
-          role="tablist"
-          aria-label="Open files"
-        >
-          <span id="no-tabs" class="no-tabs">Your workspace</span>
-        </div>
-        <div class="preview-toolbar">
-          <span id="current-path">Ready when you are</span>
-          <div class="preview-actions">
-            <div
-              id="preview-modes"
-              class="preview-modes"
-              role="group"
-              aria-label="Preview mode"
-              hidden
-            >
-              <button
-                id="viewer-mode"
-                class="toolbar-button"
-                aria-pressed="true"
-                title="Viewer mode"
-              >
-                <i class="codicon codicon-preview" aria-hidden="true"></i>
-                Viewer
-              </button>
-              <button
-                id="source-mode"
-                class="toolbar-button"
-                aria-pressed="false"
-                title="Source mode"
-              >
-                <i class="codicon codicon-code" aria-hidden="true"></i> Source
-              </button>
-            </div>
-            <button
-              id="reload-file"
-              class="toolbar-button"
-              aria-label="Reload current file"
-              title="Reload current file (r)"
-              disabled
-            >
-              <i class="codicon codicon-refresh" aria-hidden="true"></i>
-              <span>Reload</span></button
-            ><a
-              id="open-file"
-              class="toolbar-button"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Open separately"
-              title="Open separately"
-              hidden
-              ><i class="codicon codicon-link-external" aria-hidden="true"></i
-              ><span>Open separately</span></a
-            >
-          </div>
-        </div>
-        <div id="preview" class="preview">
-          <section id="empty-state" class="empty-state">
-            <div class="empty-inner">
-              <p>Press <kbd>/</kbd> to find a file.</p>
-              <p>
-                <kbd>f</kbd> jump · <kbd>hjkl</kbd> scroll · <kbd>gg</kbd> top ·
-                <kbd>G</kbd> bottom
-              </p>
-            </div>
-          </section>
-        </div>
+          id="preview"
+          class="preview editor-area"
+          aria-label="Editor workspace"
+        ></div>
         <div id="notification" class="notification" role="status" hidden></div>
       </main>
     </div>
@@ -159,6 +95,102 @@
       ></div>
       <div class="search-footer">↑ ↓ move · Enter open · Esc close</div>
     </dialog>
+    <template id="editor-group-template">
+      <div class="group-header">
+        <div
+          id="tabbar"
+          class="tabbar tabs-container"
+          role="tablist"
+          aria-label="Open files"
+        >
+          <span id="no-tabs" class="no-tabs">Your workspace</span>
+        </div>
+        <button
+          id="group-focus"
+          class="group-focus"
+          type="button"
+          hidden
+        ></button>
+        <div class="preview-toolbar">
+          <span id="current-path">Ready when you are</span>
+          <div class="preview-actions">
+            <div
+              id="preview-modes"
+              class="preview-modes"
+              role="group"
+              aria-label="Preview mode"
+              hidden
+            >
+              <button
+                id="viewer-mode"
+                class="toolbar-button"
+                aria-pressed="true"
+                title="Viewer mode"
+              >
+                <i class="codicon codicon-preview" aria-hidden="true"></i>
+                Viewer
+              </button>
+              <button
+                id="source-mode"
+                class="toolbar-button"
+                aria-pressed="false"
+                title="Source mode"
+              >
+                <i class="codicon codicon-code" aria-hidden="true"></i> Source
+              </button>
+            </div>
+            <button
+              id="split-right"
+              class="toolbar-button"
+              aria-label="Split editor right"
+              title="Split editor right (Ctrl/Cmd+\)"
+            >
+              <i
+                class="codicon codicon-split-horizontal"
+                aria-hidden="true"
+              ></i>
+            </button>
+            <button
+              id="split-down"
+              class="toolbar-button"
+              aria-label="Split editor down"
+              title="Split editor down"
+            >
+              <i class="codicon codicon-split-vertical" aria-hidden="true"></i>
+            </button>
+            <button
+              id="reload-file"
+              class="toolbar-button"
+              aria-label="Reload current file"
+              title="Reload current file (r)"
+              disabled
+            >
+              <i class="codicon codicon-refresh" aria-hidden="true"></i>
+              <span>Reload</span></button
+            ><a
+              id="open-file"
+              class="toolbar-button"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Open separately"
+              title="Open separately"
+              hidden
+              ><i class="codicon codicon-link-external" aria-hidden="true"></i
+              ><span>Open separately</span></a
+            >
+          </div>
+        </div>
+      </div>
+      <section id="empty-state" class="empty-state">
+        <div class="empty-inner">
+          <p>Press <kbd>/</kbd> to find a file.</p>
+          <p>
+            <kbd>f</kbd> jump · <kbd>hjkl</kbd> scroll · <kbd>gg</kbd> top ·
+            <kbd>G</kbd> bottom
+          </p>
+        </div>
+      </section>
+    </template>
     <script type="module" src="/app.ts"></script>
   </body>
 </html>

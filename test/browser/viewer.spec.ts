@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { once } from 'node:events';
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -104,6 +104,486 @@ async function openFile(page: Page, file: string): Promise<void> {
   await page.getByRole('button', { name: file, exact: true }).click();
   await expect(page.getByRole('dialog')).toBeHidden();
 }
+
+function editorGroup(page: Page, number: number): Locator {
+  return page.getByRole('region', {
+    name: `Editor group ${number}`,
+    exact: true,
+  });
+}
+
+async function groupPane(page: Page, group: Locator): Promise<Locator> {
+  const id = await group.getAttribute('data-group-id');
+  return page.locator(`.preview-pane[data-group-id="${id}"]:visible`);
+}
+
+async function dragTab(
+  page: Page,
+  tab: Locator,
+  target: Locator,
+  zone: 'left' | 'right' | 'up' | 'down' | 'center' | 'tab-end',
+  copy = false,
+): Promise<void> {
+  const source = await tab.boundingBox();
+  const box = await target.boundingBox();
+  if (!source || !box) throw new Error('Missing drag bounds');
+  const x =
+    box.x +
+    (zone === 'left'
+      ? 8
+      : zone === 'right' || zone === 'tab-end'
+        ? box.width - 8
+        : box.width / 2);
+  const y =
+    box.y +
+    (zone === 'tab-end'
+      ? 16
+      : zone === 'up'
+        ? 78
+        : zone === 'down'
+          ? box.height - 8
+          : 70 + (box.height - 70) / 2);
+  const modifier = await page.evaluate(() =>
+    /Mac/.test(navigator.platform) ? 'Alt' : 'Control',
+  );
+  if (copy) await page.keyboard.down(modifier);
+  await page.mouse.move(
+    source.x + source.width / 2,
+    source.y + source.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    source.x + source.width / 2 + 12,
+    source.y + source.height / 2,
+    { steps: 3 },
+  );
+  await page.mouse.move(x, y, { steps: 12 });
+  await page.mouse.move(x + 1, y);
+  await page.mouse.up();
+  if (copy) await page.keyboard.up(modifier);
+  await expect(page.locator('.editor-drag-surface')).toBeHidden();
+}
+
+test('reorders tabs by native drag and restores the order after reload', async ({
+  page,
+}) => {
+  await openFile(page, 'README.md');
+  await openFile(page, 'docs/image.svg');
+  await openFile(page, 'docs/page.html');
+  await dragTab(
+    page,
+    page.getByRole('tab', { name: 'README.md', exact: true }),
+    editorGroup(page, 1),
+    'tab-end',
+  );
+  const order = async () =>
+    page
+      .getByRole('tab')
+      .evaluateAll((tabs) => tabs.map((tab) => tab.getAttribute('aria-label')));
+  expect(await order()).toEqual([
+    'docs/image.svg',
+    'docs/page.html',
+    'README.md',
+  ]);
+  await page.reload();
+  await expect(page.getByRole('tab')).toHaveCount(3);
+  expect(await order()).toEqual([
+    'docs/image.svg',
+    'docs/page.html',
+    'README.md',
+  ]);
+});
+
+test('splits in all four directions, nests groups, and collapses an empty group', async ({
+  page,
+}) => {
+  await openFile(page, 'README.md');
+  await openFile(page, 'docs/sample.ts');
+  await dragTab(
+    page,
+    page.getByRole('tab', { name: 'docs/sample.ts', exact: true }),
+    editorGroup(page, 1),
+    'right',
+  );
+  await expect(page.locator('.editor-group')).toHaveCount(2);
+  await expect(editorGroup(page, 1).getByRole('tab')).toHaveAttribute(
+    'aria-label',
+    'README.md',
+  );
+  await expect(editorGroup(page, 2).getByRole('tab')).toHaveAttribute(
+    'aria-label',
+    'docs/sample.ts',
+  );
+  await openFile(page, 'docs/sample.py');
+  await dragTab(
+    page,
+    editorGroup(page, 2).getByRole('tab', {
+      name: 'docs/sample.py',
+      exact: true,
+    }),
+    editorGroup(page, 2),
+    'down',
+  );
+  await expect(page.locator('.editor-group')).toHaveCount(3);
+  const second = await editorGroup(page, 2).boundingBox();
+  const third = await editorGroup(page, 3).boundingBox();
+  expect(third!.y).toBeGreaterThan(second!.y);
+  expect(third!.x).toBeCloseTo(second!.x, 0);
+  await dragTab(
+    page,
+    editorGroup(page, 3).getByRole('tab'),
+    editorGroup(page, 1),
+    'left',
+  );
+  await expect(page.locator('.editor-group')).toHaveCount(3);
+  await expect(editorGroup(page, 1).getByRole('tab')).toHaveAttribute(
+    'aria-label',
+    'docs/sample.py',
+  );
+  await dragTab(
+    page,
+    editorGroup(page, 1).getByRole('tab'),
+    editorGroup(page, 2),
+    'up',
+  );
+  await expect(page.locator('.editor-group')).toHaveCount(3);
+  await expect(editorGroup(page, 1).getByRole('tab')).toHaveAttribute(
+    'aria-label',
+    'docs/sample.py',
+  );
+  const top = await editorGroup(page, 1).boundingBox();
+  const bottom = await editorGroup(page, 2).boundingBox();
+  expect(bottom!.y).toBeGreaterThan(top!.y);
+  await editorGroup(page, 1)
+    .getByRole('button', { name: 'Close docs/sample.py', exact: true })
+    .click();
+  await expect(page.locator('.editor-group')).toHaveCount(2);
+  await expect(page.locator('.editor-sash')).toHaveCount(1);
+});
+
+test('copies tabs with a modifier, keeps modes independent, and opens files in the focused group', async ({
+  page,
+}) => {
+  await openFile(page, 'README.md');
+  await page.getByRole('button', { name: 'Source', exact: true }).click();
+  await dragTab(
+    page,
+    page.getByRole('tab', { name: 'README.md', exact: true }),
+    editorGroup(page, 1),
+    'right',
+    true,
+  );
+  await expect(page.locator('.editor-group')).toHaveCount(2);
+  await expect(
+    page.getByRole('tab', { name: 'README.md', exact: true }),
+  ).toHaveCount(2);
+  await expect(page.locator('.source-text:visible')).toHaveCount(2);
+  await editorGroup(page, 2)
+    .getByRole('button', { name: 'Viewer', exact: true })
+    .click();
+  await expect(page.locator('.source-text:visible')).toHaveCount(1);
+  await expect(page.locator('.markdown-preview:visible')).toHaveCount(1);
+  await openFile(page, 'docs/sample.ts');
+  await expect(editorGroup(page, 2).getByRole('tab')).toHaveCount(2);
+  await editorGroup(page, 1).getByRole('tab').click();
+  await openFile(page, 'docs/sample.py');
+  await expect(editorGroup(page, 1).getByRole('tab')).toHaveCount(2);
+  await page.keyboard.press('Alt+k');
+  await expect(
+    editorGroup(page, 1).getByRole('tab', { name: 'README.md', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true');
+  await expect(
+    editorGroup(page, 2).getByRole('tab', {
+      name: 'docs/sample.ts',
+      exact: true,
+    }),
+  ).toHaveAttribute('aria-selected', 'true');
+  await page.reload();
+  await expect(page.locator('.editor-group')).toHaveCount(2);
+  await expect(editorGroup(page, 1)).toHaveClass(/focused/);
+  await expect(
+    editorGroup(page, 1).getByRole('button', { name: 'Source', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true');
+  await expect(
+    editorGroup(page, 2).getByRole('tab', {
+      name: 'docs/sample.ts',
+      exact: true,
+    }),
+  ).toHaveAttribute('aria-selected', 'true');
+});
+
+test('moving an HTML tab into a split and another group preserves its iframe and sandbox state', async ({
+  page,
+}) => {
+  await openFile(page, 'README.md');
+  await openFile(page, 'docs/navigation.html');
+  const frame = page.frameLocator('iframe[title="docs/navigation.html"]');
+  await frame
+    .getByRole('textbox', { name: 'Text input', exact: true })
+    .fill('retain this');
+  const requests: string[] = [];
+  page.on('request', (request) => requests.push(request.url()));
+  await dragTab(
+    page,
+    page.getByRole('tab', { name: 'docs/navigation.html', exact: true }),
+    editorGroup(page, 1),
+    'right',
+  );
+  await expect(page.locator('.editor-group')).toHaveCount(2);
+  await expect(
+    frame.getByRole('textbox', { name: 'Text input', exact: true }),
+  ).toHaveValue('retain this');
+  await editorGroup(page, 1).getByRole('tab').click();
+  await frame.getByRole('textbox', { name: 'Text input', exact: true }).click();
+  await expect(editorGroup(page, 2)).toHaveClass(/focused/);
+  await dragTab(
+    page,
+    editorGroup(page, 2).getByRole('tab'),
+    editorGroup(page, 1),
+    'center',
+  );
+  await expect(page.locator('.editor-group')).toHaveCount(1);
+  await expect(
+    frame.getByRole('textbox', { name: 'Text input', exact: true }),
+  ).toHaveValue('retain this');
+  expect(requests.filter((url) => url.includes('/preview-html?'))).toHaveLength(
+    0,
+  );
+});
+
+test('resizes columns and rows by pointer and keyboard, saves ratios, and supports split buttons', async ({
+  page,
+}) => {
+  await openFile(page, 'README.md');
+  await page
+    .getByRole('button', { name: 'Split editor right', exact: true })
+    .click();
+  await expect(page.locator('.editor-group')).toHaveCount(2);
+  const sash = page.getByRole('separator', { name: 'Resize editor columns' });
+  const box = await sash.boundingBox();
+  await page.mouse.move(box!.x + 2, box!.y + box!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box!.x + 130, box!.y + box!.height / 2, { steps: 8 });
+  await page.mouse.up();
+  const width = (await editorGroup(page, 1).boundingBox())!.width;
+  expect(width).toBeGreaterThan(700);
+  await page.reload();
+  await expect(page.locator('.editor-group')).toHaveCount(2);
+  expect((await editorGroup(page, 1).boundingBox())!.width).toBeCloseTo(
+    width,
+    0,
+  );
+  await sash.press('ArrowLeft');
+  expect((await editorGroup(page, 1).boundingBox())!.width).toBeLessThan(
+    width - 40,
+  );
+  await editorGroup(page, 2)
+    .getByRole('button', { name: 'Split editor down', exact: true })
+    .click();
+  const row = page.getByRole('separator', { name: 'Resize editor rows' });
+  await expect(row).toBeVisible();
+  const before = Number(await row.getAttribute('aria-valuenow'));
+  await row.press('ArrowDown');
+  expect(Number(await row.getAttribute('aria-valuenow'))).toBeGreaterThan(
+    before,
+  );
+  await page.screenshot({
+    path: test.info().outputPath('split-workspace.png'),
+  });
+});
+
+test('PDF search and zoom shortcuts affect only the focused group', async ({
+  page,
+}) => {
+  await openFile(page, 'docs/example.pdf');
+  await expect(page.locator('.pdf-status')).toHaveText('1 / 3');
+  await page
+    .getByRole('button', { name: 'Split editor right', exact: true })
+    .click();
+  await expect(page.locator('.pdf-status')).toHaveText(['1 / 3', '1 / 3']);
+  const first = await groupPane(page, editorGroup(page, 1));
+  const second = await groupPane(page, editorGroup(page, 2));
+  await second
+    .getByRole('region', { name: 'PDF document', exact: true })
+    .click({ position: { x: 30, y: 100 } });
+  const firstZoom = await first.locator('.pdf-zoom').textContent();
+  const secondZoom = await second.locator('.pdf-zoom').textContent();
+  await page.keyboard.press('Control+Equal');
+  await expect(second.locator('.pdf-zoom')).not.toHaveText(secondZoom!);
+  await expect(first.locator('.pdf-zoom')).toHaveText(firstZoom!);
+  await page.keyboard.press('Control+f');
+  await expect(
+    second.getByRole('textbox', { name: 'Find in PDF' }),
+  ).toBeFocused();
+  await page.keyboard.press('Escape');
+  await first
+    .getByRole('region', { name: 'PDF document', exact: true })
+    .click({ position: { x: 30, y: 100 } });
+  await page.keyboard.press('Control+f');
+  await expect(
+    first.getByRole('textbox', { name: 'Find in PDF' }),
+  ).toBeFocused();
+});
+
+test('merges duplicate files, avoids empty self-splits, and cancels dragging cleanly', async ({
+  page,
+}) => {
+  await openFile(page, 'README.md');
+  await page
+    .getByRole('button', { name: 'Split editor right', exact: true })
+    .click();
+  await editorGroup(page, 1).getByRole('tab').click();
+  await openFile(page, 'docs/sample.ts');
+  await dragTab(
+    page,
+    editorGroup(page, 2).getByRole('tab'),
+    editorGroup(page, 1),
+    'tab-end',
+    true,
+  );
+  await expect(page.getByRole('tab')).toHaveCount(3);
+  expect(
+    await editorGroup(page, 1)
+      .getByRole('tab')
+      .evaluateAll((tabs) => tabs.map((tab) => tab.getAttribute('aria-label'))),
+  ).toEqual(['docs/sample.ts', 'README.md']);
+  await dragTab(
+    page,
+    editorGroup(page, 2).getByRole('tab'),
+    editorGroup(page, 1),
+    'center',
+  );
+  await expect(page.locator('.editor-group')).toHaveCount(1);
+  await page
+    .getByRole('button', { name: 'Close docs/sample.ts', exact: true })
+    .click();
+  await expect(page.getByRole('tab')).toHaveCount(1);
+  await dragTab(page, page.getByRole('tab'), editorGroup(page, 1), 'right');
+  await expect(page.locator('.editor-group')).toHaveCount(1);
+  const box = await page.getByRole('tab').boundingBox();
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + 15);
+  await page.mouse.down();
+  await page.mouse.move(box!.x + box!.width / 2 + 15, box!.y + 15, {
+    steps: 3,
+  });
+  await page.mouse.move(1000, 400, { steps: 8 });
+  await expect(page.locator('.editor-drag-surface')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.mouse.up();
+  await expect(page.locator('.editor-drag-surface')).toBeHidden();
+  await expect(page.locator('.editor-area')).not.toHaveClass(/dragging-tab/);
+  await expect(page.locator('.editor-group')).toHaveCount(1);
+  await openFile(page, 'docs/sample.ts');
+  await page.keyboard.press('Control+Backslash');
+  await expect(page.locator('.editor-group')).toHaveCount(2);
+  await page.keyboard.press('Control+Shift+Backslash');
+  await expect(page.locator('.editor-group')).toHaveCount(3);
+});
+
+test('moving a PDF retains its loaded view, zoom, search and current page', async ({
+  page,
+}) => {
+  await openFile(page, 'README.md');
+  await openFile(page, 'docs/example.pdf');
+  await expect(page.locator('.pdf-status')).toHaveText('1 / 3');
+  await page.getByRole('button', { name: 'Zoom in PDF', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Find in PDF' }).fill('preview');
+  await expect(page.locator('.pdf-matches')).toHaveText(/1 \/ 3/);
+  const scroll = page.locator('.pdf-scroll');
+  await scroll.evaluate((element) => {
+    element.dataset.retained = 'yes';
+    element.scrollTop = element.scrollHeight - element.clientHeight;
+  });
+  await expect(page.locator('.pdf-status')).toHaveText('3 / 3');
+  const zoom = await page.locator('.pdf-zoom').textContent();
+  const requests: string[] = [];
+  page.on('request', (request) => requests.push(request.url()));
+  await dragTab(
+    page,
+    page.getByRole('tab', { name: 'docs/example.pdf', exact: true }),
+    editorGroup(page, 1),
+    'right',
+  );
+  await expect(page.locator('.editor-group')).toHaveCount(2);
+  await expect(scroll).toHaveAttribute('data-retained', 'yes');
+  await expect(page.locator('.pdf-status')).toHaveText('3 / 3');
+  await expect(page.locator('.pdf-zoom')).toHaveText(zoom!);
+  await expect(page.getByRole('textbox', { name: 'Find in PDF' })).toHaveValue(
+    'preview',
+  );
+  expect(
+    requests.filter((url) => url.includes('/file?path=docs%2Fexample.pdf')),
+  ).toHaveLength(0);
+});
+
+test('migrates old tabs and prunes missing files and empty branches when restoring splits', async ({
+  page,
+}) => {
+  await page.evaluate(async () => {
+    const { project } = await (await fetch('/api/files')).json();
+    localStorage.removeItem(`fzv:project:${project.id}:v2`);
+    localStorage.setItem(
+      `fzv:project:${project.id}:v1`,
+      JSON.stringify({
+        version: 1,
+        tabs: ['README.md', 'missing.txt', 'docs/sample.ts', 'README.md'],
+        active: 'docs/sample.ts',
+      }),
+    );
+  });
+  await page.reload();
+  await expect(page.getByRole('tab')).toHaveCount(2);
+  await expect(
+    page.getByRole('tab', { name: 'docs/sample.ts', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true');
+  await page.evaluate(async () => {
+    const { project } = await (await fetch('/api/files')).json();
+    localStorage.setItem(
+      `fzv:project:${project.id}:v2`,
+      JSON.stringify({
+        version: 2,
+        layout: {
+          type: 'split',
+          id: 's',
+          axis: 'x',
+          ratio: 0.6,
+          children: [
+            { type: 'group', id: 'a' },
+            { type: 'group', id: 'b' },
+          ],
+        },
+        groups: [
+          {
+            id: 'a',
+            tabs: [{ path: 'missing.txt', mode: 'source' }],
+            active: 'missing.txt',
+          },
+          {
+            id: 'b',
+            tabs: [{ path: 'README.md', mode: 'source' }],
+            active: 'README.md',
+          },
+        ],
+        activeGroup: 'a',
+      }),
+    );
+  });
+  await page.reload();
+  await expect(page.locator('.editor-group')).toHaveCount(1);
+  await expect(page.locator('.editor-sash')).toHaveCount(0);
+  await expect(page.getByRole('tab')).toHaveAttribute(
+    'aria-label',
+    'README.md',
+  );
+  await expect(page.locator('.source-text:visible')).toContainText(
+    '# Example project',
+  );
+  await page
+    .getByRole('button', { name: 'Close README.md', exact: true })
+    .click();
+  await expect(page.locator('.editor-group')).toHaveCount(1);
+  await expect(page.locator('.empty-state:visible')).toBeVisible();
+});
 
 test('finds files, navigates results by keyboard, and safely renders text', async ({
   page,
@@ -855,6 +1335,133 @@ test('follows the system theme until explicitly selected and tolerates unavailab
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   await page.locator('#theme-toggle').click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+});
+
+test('uses f hints to focus nested editor groups without changing their selected tabs', async ({
+  page,
+}) => {
+  await openFile(page, 'docs/sample.ts');
+  await page
+    .getByRole('button', { name: 'Split editor right', exact: true })
+    .click();
+  await openFile(page, 'README.md');
+  await editorGroup(page, 2)
+    .getByRole('button', { name: 'Split editor down', exact: true })
+    .click();
+  const first = editorGroup(page, 1);
+  const second = editorGroup(page, 2);
+  const third = editorGroup(page, 3);
+  const control = first.getByRole('button', {
+    name: 'Focus editor group 1',
+    exact: true,
+  });
+  const hint = page.locator(
+    `.vim-hint[data-hint-target="${await control.getAttribute('id')}"]`,
+  );
+  await page.keyboard.press('f');
+  await expect(hint).toBeVisible();
+  await expect(
+    page.locator('.vim-hint[data-hint-target^="group-focus"]'),
+  ).toHaveCount(3);
+  await page.keyboard.type((await hint.textContent())!.toLowerCase());
+  await expect(first).toHaveClass(/focused/);
+  await expect(
+    first.getByRole('tab', { name: 'docs/sample.ts', exact: true }),
+  ).toBeFocused();
+  await expect(
+    second.getByRole('tab', { name: 'README.md', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true');
+  await expect(
+    third.getByRole('tab', { name: 'README.md', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('.vim-hint')).toHaveCount(0);
+  await openFile(page, 'docs/sample.py');
+  await expect(
+    first.getByRole('tab', { name: 'docs/sample.py', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true');
+  const thirdControl = third.getByRole('button', {
+    name: 'Focus editor group 3',
+    exact: true,
+  });
+  const thirdHint = page.locator(
+    `.vim-hint[data-hint-target="${await thirdControl.getAttribute('id')}"]`,
+  );
+  await page.keyboard.press('f');
+  await expect(thirdHint).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(first).toHaveClass(/focused/);
+  await page.keyboard.press('f');
+  await page.keyboard.type((await thirdHint.textContent())!.toLowerCase());
+  await expect(third).toHaveClass(/focused/);
+  await expect(
+    third.getByRole('tab', { name: 'README.md', exact: true }),
+  ).toBeFocused();
+  await page.screenshot({
+    path: test.info().outputPath('editor-group-hints.png'),
+  });
+});
+
+test('can jump between HTML and editor groups with f while preserving local HTML hints and text input', async ({
+  page,
+}) => {
+  await openFile(page, 'README.md');
+  await page
+    .getByRole('button', { name: 'Split editor right', exact: true })
+    .click();
+  await openFile(page, 'docs/navigation.html');
+  const frame = page.frameLocator('iframe[title="docs/navigation.html"]');
+  const activate = frame.getByRole('button', { name: 'Activate', exact: true });
+  await activate.focus();
+  await page.keyboard.press('f');
+  const control = editorGroup(page, 1).getByRole('button', {
+    name: 'Focus editor group 1',
+    exact: true,
+  });
+  const hint = page.locator(
+    `.vim-hint[data-hint-target="${await control.getAttribute('id')}"]`,
+  );
+  await expect(hint).toBeVisible();
+  await expect(frame.locator('.vim-hint')).toHaveCount(0);
+  await page.keyboard.type((await hint.textContent())!.toLowerCase());
+  await expect(editorGroup(page, 1)).toHaveClass(/focused/);
+  await expect(
+    editorGroup(page, 2).getByRole('tab', {
+      name: 'docs/navigation.html',
+      exact: true,
+    }),
+  ).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('f');
+  const frameHint = page.locator('.vim-hint[data-hint-target="IFRAME"]');
+  await expect(frameHint).toBeVisible();
+  await page.keyboard.type((await frameHint.textContent())!.toLowerCase());
+  const localHint = frame.locator('.vim-hint[data-hint-target="activate"]');
+  await expect(localHint).toBeVisible();
+  await page.keyboard.type((await localHint.textContent())!.toLowerCase());
+  await expect(frame.locator('body')).toHaveAttribute('data-clicked', 'yes');
+  await expect(editorGroup(page, 2)).toHaveClass(/focused/);
+  await frame.getByRole('textbox', { name: 'Text input', exact: true }).focus();
+  await page.keyboard.type('f');
+  await expect(
+    frame.getByRole('textbox', { name: 'Text input', exact: true }),
+  ).toHaveValue('f');
+  await expect(page.locator('.vim-hint')).toHaveCount(0);
+  await editorGroup(page, 1).getByRole('tab').click();
+  await page.keyboard.press('f');
+  await page.keyboard.type((await frameHint.textContent())!.toLowerCase());
+  await expect(localHint).toBeVisible();
+  await page.keyboard.type((await localHint.textContent())!.toLowerCase());
+  await expect(frame.locator('.vim-hint')).toHaveCount(0);
+  await editorGroup(page, 1)
+    .getByRole('button', { name: 'Close README.md', exact: true })
+    .click();
+  await expect(page.locator('.editor-group')).toHaveCount(1);
+  await expect(
+    page.getByRole('button', { name: 'Focus editor group 1', exact: true }),
+  ).toBeHidden();
+  await activate.focus();
+  await page.keyboard.press('f');
+  await expect(localHint).toBeVisible();
+  await expect(page.locator('.vim-hint')).toHaveCount(0);
 });
 
 test('uses slash for fuzzy find and f hints to activate toolbar controls', async ({

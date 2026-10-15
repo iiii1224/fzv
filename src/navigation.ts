@@ -2,12 +2,16 @@ export interface NavigationOptions {
   getScrollRoot?: () => HTMLElement | null;
   onSearch?: () => void;
   onReload?: () => void;
+  onFocus?: () => void;
+  onHintActivate?: (target: HTMLElement) => boolean;
+  bridgeEditorGroups?: boolean;
 }
 
 // Keep this function self-contained: the server also serializes it into sandboxed
 // HTML previews. No parent DOM/storage access or external script is required.
 export function installNavigation(options: NavigationOptions = {}): {
   cancel(): void;
+  showHints(): void;
   dispose(): void;
 } {
   const lifecycle = new AbortController();
@@ -17,6 +21,7 @@ export function installNavigation(options: NavigationOptions = {}): {
   let overlay: HTMLElement | null = null;
   let hints: { label: string; target: HTMLElement; badge: HTMLElement }[] = [];
   let prefix = '';
+  let multipleEditorGroups = false;
 
   const cancel = () => {
     overlay?.remove();
@@ -173,7 +178,7 @@ export function installNavigation(options: NavigationOptions = {}): {
           cancel();
           if (target.isConnected) {
             target.focus();
-            target.click();
+            if (!options.onHintActivate?.(target)) target.click();
           }
         }
         return;
@@ -192,7 +197,9 @@ export function installNavigation(options: NavigationOptions = {}): {
       }
       if (event.key === 'f' && !event.repeat) {
         consume();
-        showHints();
+        if (options.bridgeEditorGroups && multipleEditorGroups)
+          parent.postMessage({ type: 'fzv:shortcut', key: 'f' }, '*');
+        else showHints();
         return;
       }
       if (event.key === 'g') {
@@ -219,8 +226,28 @@ export function installNavigation(options: NavigationOptions = {}): {
     { capture: true, signal },
   );
   window.addEventListener('blur', cancel, { signal });
+  window.addEventListener(
+    'message',
+    (event) => {
+      if (
+        !options.bridgeEditorGroups ||
+        parent === window ||
+        event.source !== parent
+      )
+        return;
+      if (event.data?.type === 'fzv:groups')
+        multipleEditorGroups = event.data.multiple === true;
+      if (event.data?.type === 'fzv:show-hints') showHints();
+    },
+    { signal },
+  );
   window.addEventListener('resize', cancel, { signal });
   document.addEventListener('pointerdown', cancel, { capture: true, signal });
+  document.addEventListener('pointerdown', () => options.onFocus?.(), {
+    capture: true,
+    signal,
+  });
+  document.addEventListener('focusin', () => options.onFocus?.(), { signal });
   document.addEventListener(
     'scroll',
     () => {
@@ -238,6 +265,7 @@ export function installNavigation(options: NavigationOptions = {}): {
   );
   return {
     cancel,
+    showHints,
     dispose: () => {
       cancel();
       lifecycle.abort();
