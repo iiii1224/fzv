@@ -116,7 +116,7 @@ UI・Markdown・ソースの配色が連動します。HTML内の独自の配色
 ## プレビュー対象と除外規則
 
 - PDF: `.pdf`
-- HTML: `.html`, `.htm`。相対パスの画像・CSS・フォントを同じルート内から配信
+- HTML: `.html`, `.htm`。相対・ルート相対パスの画像・CSS・フォントを同じルート内から配信
 - 画像: `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.svg`, `.avif`, `.bmp`, `.ico`
 - テキスト: `.txt`, `.md`, `.json`, `.csv`, `.ts`, `.js`, `.py`, `.rs`, `.go`, `.tex`, `.yaml` など、および `Makefile`, `Dockerfile`, `LICENSE`, `NOTICE` など
 
@@ -143,6 +143,9 @@ HTMLはsandboxとCSPで表示し、親アプリやlocalStorageへのアクセス
 インラインJavaScriptは動作しますが、外部JavaScript・API通信・入れ子のiframeは制限します。
 任意のWebアプリの完全再現には対応しません。HTML内の外部画像・CSS等は読み込めるため、
 それらのURLへの通信は発生します。アプリ本体はCDNや外部サービスを使用しません。
+
+信頼できるHTMLで外部JavaScriptや通信が必要な場合は、`--allow-html-network` を指定できます。
+このオプションではHTML内のコードがページ内容を外部へ送信できるため、信頼できるプロジェクトにだけ使用してください。
 
 ## ネットワーク公開
 

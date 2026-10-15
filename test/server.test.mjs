@@ -2,7 +2,12 @@ import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { request } from 'node:http';
-import { createViewer, parseRange } from '../dist/server/server.js';
+import {
+  createViewer,
+  NETWORK_PREVIEW_CSP,
+  parseRange,
+  PREVIEW_CSP,
+} from '../dist/server/server.js';
 import { Catalog } from '../dist/server/catalog.js';
 import { createFixture } from './fixtures.mjs';
 
@@ -167,6 +172,66 @@ test('preserves HTML relative resources with a first base and response sandbox',
   );
   assert.equal((await get('/preview-html?path=README.md')).status, 404);
 });
+test('serves root-relative HTML assets from the validated project root', async () => {
+  const html = await get('/docs/root-relative.html');
+  assert.equal(html.status, 200);
+  assert.match(await html.text(), /href="\/docs\/root\.css"/);
+  const css = await get('/docs/root.css');
+  assert.equal(css.status, 200);
+  assert.match(css.headers.get('content-type'), /^text\/css/);
+  assert.match(await css.text(), /rgb\(12, 34, 56\)/);
+  const image = await get('/docs/root.svg');
+  assert.equal(image.status, 200);
+  assert.match(image.headers.get('content-type'), /^image\/svg\+xml/);
+  assert.match(await image.text(), /<svg/);
+  for (const path of [
+    '/.env',
+    '/node_modules/dependency/index.js',
+    '/escape.txt',
+  ])
+    assert.equal((await get(path)).status, 404, path);
+});
+test('keeps HTML network access opt-in and serves requested fragments in opt-in mode', async () => {
+  assert.match(PREVIEW_CSP, /script-src 'unsafe-inline'; connect-src 'none'/);
+  assert.match(NETWORK_PREVIEW_CSP, /script-src 'unsafe-inline' http: https:/);
+  const { server: networkServer } = await createViewer({
+    root: fixture.root,
+    allowHtmlNetwork: true,
+  });
+  networkServer.listen(0, '127.0.0.1');
+  await once(networkServer, 'listening');
+  const address = networkServer.address();
+  assert.ok(address && typeof address !== 'string');
+  const networkOrigin = `http://127.0.0.1:${address.port}`;
+  try {
+    const preview = await fetch(
+      `${networkOrigin}/preview-html?path=docs/network-active.html`,
+    );
+    assert.match(
+      preview.headers.get('content-security-policy'),
+      /connect-src http: https:;/,
+    );
+    const preflight = await fetch(`${networkOrigin}/asset/docs/header.html`, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'null',
+        'Access-Control-Request-Method': 'GET',
+        'Access-Control-Request-Headers': 'x-requested-with',
+      },
+    });
+    assert.equal(preflight.status, 204);
+    assert.equal(preflight.headers.get('access-control-allow-origin'), 'null');
+    const fragment = await fetch(`${networkOrigin}/asset/docs/header.html`, {
+      headers: { Origin: 'null', 'X-Requested-With': 'XMLHttpRequest' },
+    });
+    assert.equal(fragment.status, 200);
+    assert.equal(fragment.headers.get('access-control-allow-origin'), 'null');
+    assert.match(await fragment.text(), /^<strong id="loaded-header">/);
+  } finally {
+    networkServer.closeAllConnections();
+    await new Promise((resolve) => networkServer.close(resolve));
+  }
+});
 test('supports bounded, open-ended, and suffix PDF ranges with HEAD parity', async () => {
   const full = await (await file('docs/example.pdf')).arrayBuffer();
   for (const [header, start, end] of [
@@ -254,11 +319,15 @@ test('rejects a rebinding Host, cross-origin API access, and writes', async () =
 test('serves the built UI and blocks unlisted static paths', async () => {
   const response = await get('/');
   assert.equal(response.status, 200);
-  assert.match(await response.text(), /fzv/);
+  const html = await response.text();
+  assert.match(html, /fzv/);
   assert.match(
     response.headers.get('content-security-policy'),
     /frame-ancestors 'none'/,
   );
+  const appScript = /<script[^>]+src="([^"]+)"/.exec(html)?.[1];
+  assert.ok(appScript?.startsWith('/_fzv/'));
+  assert.equal((await get(appScript)).status, 200);
   for (const path of [
     '/package.json',
     '/src/server/cli.ts',

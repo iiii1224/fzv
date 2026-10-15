@@ -18,6 +18,7 @@ test(
   async () => {
     assert.ok(npmCli, 'Run package verification with npm test.');
     const directory = await mkdtemp(path.join(tmpdir(), 'fzv-package-'));
+    const cache = path.join(directory, 'cache');
     const fixture = await createFixture();
     let child;
     try {
@@ -30,6 +31,8 @@ test(
           '--json',
           '--pack-destination',
           directory,
+          '--cache',
+          cache,
         ],
         { cwd: process.cwd() },
       );
@@ -64,7 +67,6 @@ test(
         ),
       );
       const archive = path.join(directory, packed.filename);
-      const cache = path.join(directory, 'cache');
       const npxCli = path.join(path.dirname(npmCli), 'npx-cli.js');
       const version = await exec(
         process.execPath,
@@ -177,8 +179,14 @@ test(
       );
       for (const asset of highlightAssets)
         assert.equal(
-          (await fetch(new URL(asset.path.replace('dist/client/', ''), origin)))
-            .status,
+          (
+            await fetch(
+              new URL(
+                `/_fzv/${asset.path.replace('dist/client/', '')}`,
+                origin,
+              ),
+            )
+          ).status,
           200,
         );
       for (const [asset, type] of [
@@ -194,7 +202,7 @@ test(
         assert.ok(
           packed.files.some((file) => file.path === `dist/client/${resource}`),
         );
-        const response = await fetch(new URL(resource, origin));
+        const response = await fetch(new URL(`/_fzv/${resource}`, origin));
         assert.equal(response.status, 200, resource);
         assert.match(response.headers.get('content-type'), type);
       }

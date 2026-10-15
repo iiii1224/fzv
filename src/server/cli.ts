@@ -6,11 +6,12 @@ import { viewerUrls } from './network.js';
 
 const HELP = `${PRODUCT_NAME} — the file viewer for agent-driven development
 
-Usage: ${PRODUCT_NAME} [--root PATH] [--host HOST] [--port PORT]
+Usage: ${PRODUCT_NAME} [--root PATH] [--host HOST] [--port PORT] [--allow-html-network]
 
   --root PATH   Project directory (default: current working directory)
   --host HOST   Bind address (default: 127.0.0.1)
   --port PORT   HTTP port, 0 for a free port (default: 8000)
+  --allow-html-network  Allow HTML previews to run remote scripts and make network requests
   -h, --help    Show this help
   -v, --version Show version
 
@@ -26,6 +27,7 @@ async function main(): Promise<void> {
       root: { type: 'string' },
       host: { type: 'string', default: '127.0.0.1' },
       port: { type: 'string', default: '8000' },
+      'allow-html-network': { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h' },
       version: { type: 'boolean', short: 'v' },
     },
@@ -45,7 +47,12 @@ async function main(): Promise<void> {
   const { server, catalog } = await createViewer({
     root: values.root ?? process.cwd(),
     host: values.host,
+    allowHtmlNetwork: values['allow-html-network'],
   });
+  if (values['allow-html-network'])
+    console.warn(
+      `${PRODUCT_NAME}: HTML previews can run network-loaded code. Use only with trusted projects.`,
+    );
   server.on('error', (error: NodeJS.ErrnoException) => {
     console.error(
       `${PRODUCT_NAME}: ${error.code === 'EADDRINUSE' ? `Port ${values.port} is in use. Choose another with --port.` : error.message}`,

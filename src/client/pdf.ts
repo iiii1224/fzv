@@ -15,7 +15,7 @@ import {
 import 'pdfjs-dist/web/pdf_viewer.css';
 import './pdf.css';
 
-GlobalWorkerOptions.workerSrc = '/pdfjs/build/pdf.worker.mjs';
+GlobalWorkerOptions.workerSrc = '/_fzv/pdfjs/build/pdf.worker.mjs';
 
 interface FindUpdate {
   state?: number;
@@ -238,12 +238,12 @@ export async function mountPdf(
   });
   const loading = getDocument({
     url,
-    cMapUrl: '/pdfjs/cmaps/',
+    cMapUrl: '/_fzv/pdfjs/cmaps/',
     cMapPacked: true,
-    standardFontDataUrl: '/pdfjs/standard_fonts/',
+    standardFontDataUrl: '/_fzv/pdfjs/standard_fonts/',
     useSystemFonts: false,
-    wasmUrl: '/pdfjs/wasm/',
-    iccUrl: '/pdfjs/iccs/',
+    wasmUrl: '/_fzv/pdfjs/wasm/',
+    iccUrl: '/_fzv/pdfjs/iccs/',
     enableXfa: false,
   });
   const dispose = () => {

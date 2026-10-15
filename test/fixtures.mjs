@@ -54,6 +54,22 @@ export async function createFixture() {
       '<!doctype html><html><body style="margin:0"><button id="activate" onclick="document.body.dataset.clicked=\'yes\'">Activate</button><input id="entry" aria-label="Text input"><div contenteditable="true" id="editable" aria-label="Editable text">Edit here</div><div style="height:2400px;width:1800px">Long and wide page</div></body></html>',
     ),
     writeFile(
+      path.join(root, 'docs', 'root-relative.html'),
+      '<!doctype html><html><head><link rel="stylesheet" href="/docs/root.css"></head><body><h1 id="root-relative-target">Root-relative asset preview</h1><img src="/docs/root.svg" alt="Root-relative image"></body></html>',
+    ),
+    writeFile(
+      path.join(root, 'docs', 'network-active.html'),
+      '<!doctype html><html><body><div id="header">Loading header…</div><script src="active.js"></script></body></html>',
+    ),
+    writeFile(
+      path.join(root, 'docs', 'active.js'),
+      'fetch("header.html", { headers: { "X-Requested-With": "XMLHttpRequest" } }).then(response => response.text()).then(html => { document.querySelector("#header").innerHTML = html; }).catch(error => { document.querySelector("#header").textContent = String(error); });',
+    ),
+    writeFile(
+      path.join(root, 'docs', 'header.html'),
+      '<strong id="loaded-header">Dynamic header loaded</strong>',
+    ),
+    writeFile(
       path.join(root, 'docs', 'sample.ts'),
       'export const message: string = "<script>unsafe</script>";\r\n// 日本語のコメント\r\nconsole.log(message);\r\n',
     ),
@@ -82,6 +98,14 @@ export async function createFixture() {
     writeFile(
       path.join(root, 'docs', 'style.css'),
       'body { background: rgb(245, 240, 232); color: rgb(53, 50, 47); font-family: sans-serif; }',
+    ),
+    writeFile(
+      path.join(root, 'docs', 'root.css'),
+      '#root-relative-target { color: rgb(12, 34, 56); }',
+    ),
+    writeFile(
+      path.join(root, 'docs', 'root.svg'),
+      '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10" fill="red"/></svg>',
     ),
     writeFile(
       path.join(root, 'docs', 'page.html'),

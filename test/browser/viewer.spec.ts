@@ -10,20 +10,34 @@ import { createViewer } from '../../dist/server/server.js';
 
 let fixture: Awaited<ReturnType<typeof createFixture>>;
 let server: import('node:http').Server;
+let networkServer: import('node:http').Server;
 let origin: string;
+let networkOrigin: string;
 test.beforeAll(async () => {
   fixture = await createFixture();
   ({ server } = await createViewer({ root: fixture.root }));
+  ({ server: networkServer } = await createViewer({
+    root: fixture.root,
+    allowHtmlNetwork: true,
+  }));
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
+  networkServer.listen(0, '127.0.0.1');
+  await once(networkServer, 'listening');
   const address = server.address();
   if (!address || typeof address === 'string')
     throw new Error('Server did not start');
   origin = `http://127.0.0.1:${address.port}`;
+  const networkAddress = networkServer.address();
+  if (!networkAddress || typeof networkAddress === 'string')
+    throw new Error('Network-enabled server did not start');
+  networkOrigin = `http://127.0.0.1:${networkAddress.port}`;
 });
 test.afterAll(async () => {
   server?.closeAllConnections();
+  networkServer?.closeAllConnections();
   await new Promise<void>((resolve) => server.close(() => resolve()));
+  await new Promise<void>((resolve) => networkServer.close(() => resolve()));
   await fixture?.cleanup();
 });
 test.beforeEach(async ({ page }) => {
@@ -183,6 +197,32 @@ test('shows keyboard help and supports Vim scrolling and search inside HTML prev
   await expect(frameHelp).toBeHidden();
   await page.keyboard.press('/');
   await expect(page.getByRole('dialog', { name: 'Find a file' })).toBeVisible();
+});
+
+test('renders HTML assets addressed from the project root', async ({
+  page,
+}) => {
+  await openFile(page, 'docs/root-relative.html');
+  const frame = page.frameLocator('iframe[title="docs/root-relative.html"]');
+  await expect(frame.locator('#root-relative-target')).toHaveCSS(
+    'color',
+    'rgb(12, 34, 56)',
+  );
+  await expect(frame.getByAltText('Root-relative image')).toHaveJSProperty(
+    'naturalWidth',
+    10,
+  );
+});
+
+test('opts into remote scripts and sandboxed same-project HTML requests', async ({
+  page,
+}) => {
+  await page.goto(
+    `${networkOrigin}/preview-html?path=docs/network-active.html`,
+  );
+  await expect(page.locator('#loaded-header')).toHaveText(
+    'Dynamic header loaded',
+  );
 });
 
 test('restores saved tabs before the full file index finishes loading', async ({
@@ -1589,7 +1629,9 @@ test('can jump between HTML and editor groups with f while preserving local HTML
     '.vim-hint[data-hint-target="IFRAME"]',
   );
   await expect(singleGroupFrameHint).toBeVisible();
-  await page.keyboard.type((await singleGroupFrameHint.textContent())!.toLowerCase());
+  await page.keyboard.type(
+    (await singleGroupFrameHint.textContent())!.toLowerCase(),
+  );
   await expect(localHint).toBeVisible();
   await expect(page.locator('.vim-hint')).toHaveCount(0);
 });
@@ -1810,9 +1852,7 @@ test('supports hints, scrolling and slash search inside sandboxed HTML without i
 
   await button.focus();
   await page.keyboard.press('f');
-  const frameHint = page.locator(
-    '.vim-hint[data-hint-target="IFRAME"]',
-  );
+  const frameHint = page.locator('.vim-hint[data-hint-target="IFRAME"]');
   await expect(frameHint).toBeVisible();
   await page.keyboard.type((await frameHint.textContent())!.toLowerCase());
   const hint = frame.locator('.vim-hint[data-hint-target="activate"]');

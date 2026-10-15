@@ -16,7 +16,10 @@ function pdfAssets(): Plugin {
     }
   }
   const assets = new Map(
-    names.map((name) => [`/pdfjs/${name}`, fileURLToPath(new URL(name, root))]),
+    names.map((name) => [
+      `/_fzv/pdfjs/${name}`,
+      fileURLToPath(new URL(name, root)),
+    ]),
   );
   return {
     name: 'local-pdf-assets',
@@ -28,7 +31,7 @@ function pdfAssets(): Plugin {
       for (const [url, filename] of assets)
         this.emitFile({
           type: 'asset',
-          fileName: url.slice(1),
+          fileName: url.slice('/_fzv/'.length),
           source: readFileSync(filename),
         });
     },
@@ -51,7 +54,9 @@ function pdfAssets(): Plugin {
 
 export default defineConfig({
   root: 'src/client',
-  base: '/',
+  // Reserve the root URL space for project files and HTML asset references.
+  // The viewer UI lives at / and loads its built assets from /_fzv/.
+  base: '/_fzv/',
   plugins: [pdfAssets()],
   build: { outDir: '../../dist/client', emptyOutDir: true },
   server: {

@@ -14,6 +14,8 @@ const UI_CSP =
   "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'";
 export const PREVIEW_CSP =
   "sandbox allow-scripts; default-src 'none'; img-src http: https: data: blob:; style-src http: https: data: 'unsafe-inline'; font-src http: https: data:; media-src http: https: data: blob:; script-src 'unsafe-inline'; connect-src 'none'; object-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'self'; frame-ancestors 'self'";
+export const NETWORK_PREVIEW_CSP =
+  "sandbox allow-scripts; default-src 'none'; img-src http: https: data: blob:; style-src http: https: data: 'unsafe-inline'; font-src http: https: data:; media-src http: https: data: blob:; script-src 'unsafe-inline' http: https:; connect-src http: https:; object-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'self'; frame-ancestors 'self'";
 
 function reply(
   req: IncomingMessage,
@@ -82,22 +84,37 @@ async function sendProjectFile(
   file: OpenProjectFile,
   relative: string,
   asset: boolean,
+  previewCsp: string,
+  allowHtmlNetwork: boolean,
 ): Promise<void> {
   try {
     if (file.kind === 'html' && asset) {
-      res.setHeader('Content-Security-Policy', PREVIEW_CSP);
+      res.setHeader('Content-Security-Policy', previewCsp);
+      const requestedWith = req.headers['x-requested-with'];
+      if (allowHtmlNetwork && req.headers.origin === 'null') {
+        res.setHeader('Access-Control-Allow-Origin', 'null');
+        res.setHeader('Vary', 'Origin');
+      }
       const source = await file.handle.readFile({ encoding: 'utf8' });
       reply(
         req,
         res,
         200,
         'text/html; charset=utf-8',
-        renderHtml(source, relative),
+        allowHtmlNetwork &&
+          typeof requestedWith === 'string' &&
+          requestedWith.toLowerCase() === 'xmlhttprequest'
+          ? source
+          : renderHtml(source, relative),
       );
       return;
     }
     // The response header also protects SVG or HTML opened directly in a browser tab.
-    res.setHeader('Content-Security-Policy', PREVIEW_CSP);
+    res.setHeader('Content-Security-Policy', previewCsp);
+    if (allowHtmlNetwork && req.headers.origin === 'null') {
+      res.setHeader('Access-Control-Allow-Origin', 'null');
+      res.setHeader('Vary', 'Origin');
+    }
     res.setHeader('Accept-Ranges', 'bytes');
     res.setHeader('Content-Disposition', 'inline');
     const range = parseRange(req.headers.range, file.size);
@@ -155,11 +172,14 @@ export interface ViewerOptions {
   root: string;
   host?: string;
   uiRoot?: string;
+  allowHtmlNetwork?: boolean;
 }
 export async function createViewer(options: ViewerOptions) {
   const catalog = await Catalog.create(options.root);
   const hosts = allowedHosts(options.host ?? '127.0.0.1');
   const uiRoot = await realpath(options.uiRoot ?? UI_ROOT);
+  const allowHtmlNetwork = options.allowHtmlNetwork ?? false;
+  const previewCsp = allowHtmlNetwork ? NETWORK_PREVIEW_CSP : PREVIEW_CSP;
   const server = createServer(async (req, res) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Cache-Control', 'no-store');
@@ -179,12 +199,40 @@ export async function createViewer(options: ViewerOptions) {
         reply(req, res, 403, 'text/plain', 'Host not allowed\n');
         return;
       }
+      const url = new URL(req.url, origin);
+      if (
+        allowHtmlNetwork &&
+        req.headers.origin === 'null' &&
+        req.method === 'OPTIONS' &&
+        url.pathname.startsWith('/asset/')
+      ) {
+        const requestedHeaders = (
+          req.headers['access-control-request-headers'] ?? ''
+        )
+          .split(',')
+          .map((header) => header.trim().toLowerCase())
+          .filter(Boolean);
+        const requestedMethod = req.headers['access-control-request-method'];
+        if (
+          (requestedMethod !== 'GET' && requestedMethod !== 'HEAD') ||
+          requestedHeaders.some((header) => header !== 'x-requested-with')
+        ) {
+          reply(req, res, 403, 'text/plain', 'CORS headers not allowed\n');
+          return;
+        }
+        res.setHeader('Access-Control-Allow-Origin', 'null');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD');
+        res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With');
+        res.setHeader('Access-Control-Max-Age', '600');
+        res.setHeader('Vary', 'Origin');
+        reply(req, res, 204, 'text/plain', '');
+        return;
+      }
       if (req.method !== 'GET' && req.method !== 'HEAD') {
         res.setHeader('Allow', 'GET, HEAD');
         reply(req, res, 405, 'text/plain', 'Method not allowed\n');
         return;
       }
-      const url = new URL(req.url, origin);
       if (
         url.pathname === '/api/project' ||
         url.pathname === '/api/files' ||
@@ -220,7 +268,7 @@ export async function createViewer(options: ViewerOptions) {
         try {
           if (file.kind !== 'html') throw new FileUnavailable();
           const source = await file.handle.readFile({ encoding: 'utf8' });
-          res.setHeader('Content-Security-Policy', PREVIEW_CSP);
+          res.setHeader('Content-Security-Policy', previewCsp);
           reply(
             req,
             res,
@@ -239,30 +287,55 @@ export async function createViewer(options: ViewerOptions) {
           ? decodeURIComponent(url.pathname.slice('/asset/'.length))
           : (url.searchParams.get('path') ?? '');
         const file = await catalog.openFile(relative, asset);
-        await sendProjectFile(req, res, file, relative, asset);
+        await sendProjectFile(
+          req,
+          res,
+          file,
+          relative,
+          asset,
+          previewCsp,
+          allowHtmlNetwork,
+        );
         return;
       }
-      const relative =
-        url.pathname === '/'
-          ? 'index.html'
-          : decodeURIComponent(url.pathname).slice(1);
-      if (
-        !relative ||
-        relative.split('/').some((part) => part.startsWith('.')) ||
-        relative.includes('\\') ||
-        relative.includes('\0')
-      )
-        throw new FileUnavailable();
-      const filename = await realpath(path.join(uiRoot, relative));
-      const inside = path.relative(uiRoot, filename);
-      if (
-        inside.startsWith('..') ||
-        path.isAbsolute(inside) ||
-        !(await stat(filename)).isFile()
-      )
-        throw new FileUnavailable();
-      const body = await readFile(filename);
-      reply(req, res, 200, contentType(filename, true), body);
+      if (url.pathname === '/' || url.pathname.startsWith('/_fzv/')) {
+        const relative =
+          url.pathname === '/'
+            ? 'index.html'
+            : decodeURIComponent(url.pathname.slice('/_fzv/'.length));
+        if (
+          !relative ||
+          relative.split('/').some((part) => part.startsWith('.')) ||
+          relative.includes('\\') ||
+          relative.includes('\0')
+        )
+          throw new FileUnavailable();
+        const filename = await realpath(path.join(uiRoot, relative));
+        const inside = path.relative(uiRoot, filename);
+        if (
+          inside.startsWith('..') ||
+          path.isAbsolute(inside) ||
+          !(await stat(filename)).isFile()
+        )
+          throw new FileUnavailable();
+        const body = await readFile(filename);
+        reply(req, res, 200, contentType(filename, true), body);
+        return;
+      }
+      // Project HTML commonly refers to assets from the site root, such as
+      // /css/site.css. Keep those URLs in project space and validate them via
+      // the same catalog path as /asset/ requests. Viewer files use /_fzv/.
+      const relative = decodeURIComponent(url.pathname).slice(1);
+      const file = await catalog.openFile(relative, true);
+      await sendProjectFile(
+        req,
+        res,
+        file,
+        relative,
+        true,
+        previewCsp,
+        allowHtmlNetwork,
+      );
     } catch (error) {
       if (res.headersSent || res.destroyed) {
         res.destroy();
