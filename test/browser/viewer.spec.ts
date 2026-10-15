@@ -11,19 +11,30 @@ import { createViewer } from '../../dist/server/server.js';
 let fixture: Awaited<ReturnType<typeof createFixture>>;
 let server: import('node:http').Server;
 let networkServer: import('node:http').Server;
+let watchServer: import('node:http').Server;
 let origin: string;
 let networkOrigin: string;
+let watchOrigin: string;
+let watchTarget: string;
 test.beforeAll(async () => {
   fixture = await createFixture();
+  watchTarget = path.join(fixture.root, 'docs', 'watch.txt');
+  await writeFile(watchTarget, 'Before change');
   ({ server } = await createViewer({ root: fixture.root }));
   ({ server: networkServer } = await createViewer({
     root: fixture.root,
     allowHtmlNetwork: true,
   }));
+  ({ server: watchServer } = await createViewer({
+    root: fixture.root,
+    watch: true,
+  }));
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   networkServer.listen(0, '127.0.0.1');
   await once(networkServer, 'listening');
+  watchServer.listen(0, '127.0.0.1');
+  await once(watchServer, 'listening');
   const address = server.address();
   if (!address || typeof address === 'string')
     throw new Error('Server did not start');
@@ -32,12 +43,18 @@ test.beforeAll(async () => {
   if (!networkAddress || typeof networkAddress === 'string')
     throw new Error('Network-enabled server did not start');
   networkOrigin = `http://127.0.0.1:${networkAddress.port}`;
+  const watchAddress = watchServer.address();
+  if (!watchAddress || typeof watchAddress === 'string')
+    throw new Error('Watch server did not start');
+  watchOrigin = `http://127.0.0.1:${watchAddress.port}`;
 });
 test.afterAll(async () => {
   server?.closeAllConnections();
   networkServer?.closeAllConnections();
+  watchServer?.closeAllConnections();
   await new Promise<void>((resolve) => server.close(() => resolve()));
   await new Promise<void>((resolve) => networkServer.close(() => resolve()));
+  await new Promise<void>((resolve) => watchServer.close(() => resolve()));
   await fixture?.cleanup();
 });
 test.beforeEach(async ({ page }) => {
@@ -222,6 +239,21 @@ test('opts into remote scripts and sandboxed same-project HTML requests', async 
   );
   await expect(page.locator('#loaded-header')).toHaveText(
     'Dynamic header loaded',
+  );
+});
+
+test('reloads the viewer when a project file changes in watch mode', async ({
+  page,
+}) => {
+  await page.goto(watchOrigin);
+  await openFile(page, 'docs/watch.txt');
+  await expect(page.locator('.source-text:visible')).toContainText(
+    'Before change',
+  );
+  await writeFile(watchTarget, 'After change');
+  await expect(page.locator('.source-text:visible')).toContainText(
+    'After change',
+    { timeout: 10000 },
   );
 });
 

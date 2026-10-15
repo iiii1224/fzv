@@ -249,6 +249,10 @@ async function loadIndex(initial = false): Promise<void> {
       if (!projectResponse.ok)
         throw new Error(`HTTP ${projectResponse.status}`);
       const project = (await projectResponse.json()) as ProjectInfo;
+      if (project.watch) {
+        const events = new EventSource('/api/events');
+        events.addEventListener('change', () => window.location.reload());
+      }
       projectId = project.id;
       byId('project-name').textContent = project.name;
       byId('status-project').textContent = project.name;

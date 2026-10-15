@@ -1,11 +1,17 @@
 import { createServer } from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { networkInterfaces } from 'node:os';
+import { watch as watchFiles } from 'node:fs';
 import { readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { pipeline } from 'node:stream/promises';
-import { Catalog, contentType, FileUnavailable } from './catalog.js';
+import {
+  Catalog,
+  contentType,
+  FileUnavailable,
+  isVisibleRelative,
+} from './catalog.js';
 import type { OpenProjectFile } from './catalog.js';
 import { installNavigation } from '../navigation.js';
 
@@ -173,13 +179,41 @@ export interface ViewerOptions {
   host?: string;
   uiRoot?: string;
   allowHtmlNetwork?: boolean;
+  watch?: boolean;
 }
 export async function createViewer(options: ViewerOptions) {
   const catalog = await Catalog.create(options.root);
   const hosts = allowedHosts(options.host ?? '127.0.0.1');
   const uiRoot = await realpath(options.uiRoot ?? UI_ROOT);
   const allowHtmlNetwork = options.allowHtmlNetwork ?? false;
+  const watchEnabled = options.watch ?? false;
   const previewCsp = allowHtmlNetwork ? NETWORK_PREVIEW_CSP : PREVIEW_CSP;
+  const eventClients = new Set<ServerResponse>();
+  let reloadTimer: NodeJS.Timeout | undefined;
+  const watcher = watchEnabled
+    ? watchFiles(
+        catalog.root,
+        { recursive: true, encoding: 'utf8' },
+        (_event, filename) => {
+          const relative = filename?.split(path.sep).join('/');
+          if (relative && !isVisibleRelative(relative)) return;
+          clearTimeout(reloadTimer);
+          reloadTimer = setTimeout(() => {
+            reloadTimer = undefined;
+            for (const client of eventClients) {
+              if (client.destroyed) {
+                eventClients.delete(client);
+                continue;
+              }
+              if (!client.write('event: change\ndata: {}\n\n')) {
+                eventClients.delete(client);
+                client.end();
+              }
+            }
+          }, 100);
+        },
+      )
+    : undefined;
   const server = createServer(async (req, res) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Cache-Control', 'no-store');
@@ -233,6 +267,43 @@ export async function createViewer(options: ViewerOptions) {
         reply(req, res, 405, 'text/plain', 'Method not allowed\n');
         return;
       }
+      if (url.pathname === '/api/events') {
+        if (!watchEnabled || !watcher) {
+          reply(req, res, 404, 'text/plain; charset=utf-8', 'Not found\n');
+          return;
+        }
+        if (req.method !== 'GET') {
+          res.setHeader('Allow', 'GET');
+          reply(
+            req,
+            res,
+            405,
+            'text/plain; charset=utf-8',
+            'Method not allowed\n',
+          );
+          return;
+        }
+        if (req.headers.origin && req.headers.origin !== origin.origin) {
+          reply(
+            req,
+            res,
+            403,
+            'text/plain; charset=utf-8',
+            'Origin not allowed\n',
+          );
+          return;
+        }
+        res.writeHead(200, {
+          'Content-Type': 'text/event-stream; charset=utf-8',
+          'Cache-Control': 'no-cache, no-transform',
+          Connection: 'keep-alive',
+          'X-Accel-Buffering': 'no',
+        });
+        res.write(': connected\n\n');
+        eventClients.add(res);
+        res.on('close', () => eventClients.delete(res));
+        return;
+      }
       if (
         url.pathname === '/api/project' ||
         url.pathname === '/api/files' ||
@@ -247,12 +318,13 @@ export async function createViewer(options: ViewerOptions) {
           reply(req, res, 400, 'text/plain', 'Too many file paths\n');
           return;
         }
+        const project = { ...catalog.project, watch: watchEnabled };
         const body =
           url.pathname === '/api/project'
-            ? catalog.project
+            ? project
             : url.pathname === '/api/session-files'
               ? await catalog.filesForPaths(paths)
-              : { project: catalog.project, ...(await catalog.list()) };
+              : { project, ...(await catalog.list()) };
         reply(
           req,
           res,
@@ -365,5 +437,15 @@ export async function createViewer(options: ViewerOptions) {
   });
   server.requestTimeout = 30_000;
   server.headersTimeout = 10_000;
+  server.on('close', () => {
+    watcher?.close();
+    clearTimeout(reloadTimer);
+    for (const client of eventClients) client.end();
+    eventClients.clear();
+  });
+  watcher?.on('error', (error) => {
+    watcher.close();
+    server.emit('watchError', error);
+  });
   return { server, catalog };
 }

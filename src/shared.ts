@@ -19,6 +19,7 @@ export interface ProjectInfo {
   id: string;
   name: string;
   maxFileSize: number;
+  watch?: boolean;
 }
 export interface FileIndex {
   project: ProjectInfo;

@@ -44,4 +44,4 @@ The HTTP server defaults to loopback, checks request Host names against the boun
 
 ## Deferred
 
-Editing, IDE integration, project-wide content search, file watching, gitignore interpretation, plugins, and server-side state storage are outside the initial scope. Search can move into a Web Worker if measurements show that scoring interrupts input.
+Editing, IDE integration, project-wide content search, gitignore interpretation, plugins, and server-side state storage are outside the initial scope. Search can move into a Web Worker if measurements show that scoring interrupts input. Optional `--watch` mode reloads the browser when visible project paths change.

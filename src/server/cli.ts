@@ -6,11 +6,12 @@ import { viewerUrls } from './network.js';
 
 const HELP = `${PRODUCT_NAME} — the file viewer for agent-driven development
 
-Usage: ${PRODUCT_NAME} [--root PATH] [--host HOST] [--port PORT] [--allow-html-network]
+Usage: ${PRODUCT_NAME} [--root PATH] [--host HOST] [--port PORT] [--watch] [--allow-html-network]
 
   --root PATH   Project directory (default: current working directory)
   --host HOST   Bind address (default: 127.0.0.1)
   --port PORT   HTTP port, 0 for a free port (default: 8000)
+  --watch       Reload the viewer when project files change
   --allow-html-network  Allow HTML previews to run remote scripts and make network requests
   -h, --help    Show this help
   -v, --version Show version
@@ -27,6 +28,7 @@ async function main(): Promise<void> {
       root: { type: 'string' },
       host: { type: 'string', default: '127.0.0.1' },
       port: { type: 'string', default: '8000' },
+      watch: { type: 'boolean', default: false },
       'allow-html-network': { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h' },
       version: { type: 'boolean', short: 'v' },
@@ -47,7 +49,11 @@ async function main(): Promise<void> {
   const { server, catalog } = await createViewer({
     root: values.root ?? process.cwd(),
     host: values.host,
+    watch: values.watch,
     allowHtmlNetwork: values['allow-html-network'],
+  });
+  server.on('watchError', (error: Error) => {
+    console.error(`${PRODUCT_NAME}: file watching stopped: ${error.message}`);
   });
   if (values['allow-html-network'])
     console.warn(
