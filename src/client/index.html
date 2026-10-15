@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="color-scheme" content="light" />
+    <meta name="color-scheme" content="light dark" />
     <meta
       name="description"
       content="A local file viewer for agent-driven development."
@@ -16,17 +16,57 @@
       <a class="brand" href="/" aria-label="fzv home">fzv</a>
       <span class="project-label" id="project-name">Project</span>
       <button id="find-file" class="toolbar-button" aria-haspopup="dialog">
-        Find a file <kbd>f</kbd>
+        <i class="codicon codicon-search" aria-hidden="true"></i>
+        Find a file <kbd>/</kbd>
+      </button>
+      <button
+        id="theme-toggle"
+        class="toolbar-button"
+        aria-label="Switch to dark theme"
+        aria-pressed="false"
+      >
+        <i class="codicon codicon-color-mode" aria-hidden="true"></i
+        ><span>Dark</span>
       </button>
     </header>
     <div class="workspace" id="workspace">
       <main id="main" class="main" tabindex="-1">
-        <div id="tabbar" class="tabbar" role="tablist" aria-label="Open files">
+        <div
+          id="tabbar"
+          class="tabbar tabs-container"
+          role="tablist"
+          aria-label="Open files"
+        >
           <span id="no-tabs" class="no-tabs">Your workspace</span>
         </div>
         <div class="preview-toolbar">
           <span id="current-path">Ready when you are</span>
           <div class="preview-actions">
+            <div
+              id="preview-modes"
+              class="preview-modes"
+              role="group"
+              aria-label="Preview mode"
+              hidden
+            >
+              <button
+                id="viewer-mode"
+                class="toolbar-button"
+                aria-pressed="true"
+                title="Viewer mode"
+              >
+                <i class="codicon codicon-preview" aria-hidden="true"></i>
+                Viewer
+              </button>
+              <button
+                id="source-mode"
+                class="toolbar-button"
+                aria-pressed="false"
+                title="Source mode"
+              >
+                <i class="codicon codicon-code" aria-hidden="true"></i> Source
+              </button>
+            </div>
             <button
               id="reload-file"
               class="toolbar-button"
@@ -34,21 +74,29 @@
               title="Reload current file (r)"
               disabled
             >
-              ↻ <span>Reload</span></button
+              <i class="codicon codicon-refresh" aria-hidden="true"></i>
+              <span>Reload</span></button
             ><a
               id="open-file"
               class="toolbar-button"
               target="_blank"
               rel="noopener noreferrer"
+              aria-label="Open separately"
+              title="Open separately"
               hidden
-              >Open separately ↗</a
+              ><i class="codicon codicon-link-external" aria-hidden="true"></i
+              ><span>Open separately</span></a
             >
           </div>
         </div>
         <div id="preview" class="preview">
           <section id="empty-state" class="empty-state">
             <div class="empty-inner">
-              <p>Press <kbd>f</kbd> to find a file.</p>
+              <p>Press <kbd>/</kbd> to find a file.</p>
+              <p>
+                <kbd>f</kbd> jump · <kbd>hjkl</kbd> scroll · <kbd>gg</kbd> top ·
+                <kbd>G</kbd> bottom
+              </p>
             </div>
           </section>
         </div>
@@ -62,10 +110,10 @@
     </footer>
     <dialog
       id="search-panel"
-      class="search-popup"
+      class="search-popup quick-input-widget"
       aria-labelledby="search-title"
     >
-      <div class="search-heading">
+      <div class="search-heading quick-input-titlebar">
         <h1 id="search-title">Find a file</h1>
         <button
           id="refresh-files"
@@ -73,7 +121,7 @@
           aria-label="Refresh file list"
           title="Refresh file list"
         >
-          Refresh
+          <i class="codicon codicon-refresh" aria-hidden="true"></i> Refresh
         </button>
         <button
           id="close-search"
@@ -81,11 +129,11 @@
           aria-label="Close file search"
           title="Close file search (Escape)"
         >
-          Esc
+          <i class="codicon codicon-close" aria-hidden="true"></i> Esc
         </button>
       </div>
-      <label class="search-field">
-        <span aria-hidden="true">&gt;</span>
+      <label class="search-field quick-input-box">
+        <i class="codicon codicon-search" aria-hidden="true"></i>
         <input
           id="search"
           type="search"
@@ -104,7 +152,11 @@
       >
         Loading files…
       </div>
-      <div id="results" class="results" aria-label="Files"></div>
+      <div
+        id="results"
+        class="results quick-input-list"
+        aria-label="Files"
+      ></div>
       <div class="search-footer">↑ ↓ move · Enter open · Esc close</div>
     </dialog>
     <script type="module" src="/app.ts"></script>

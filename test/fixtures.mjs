@@ -28,6 +28,26 @@ export async function createFixture() {
       .join('') +
     `trailer\n<</Size 6 /Root 1 0 R>>\nstartxref\n${pdfBody.length}\n%%EOF\n`;
   await Promise.all([
+    writeFile(
+      path.join(root, 'docs', 'navigation.html'),
+      '<!doctype html><html><body style="margin:0"><button id="activate" onclick="document.body.dataset.clicked=\'yes\'">Activate</button><input id="entry" aria-label="Text input"><div contenteditable="true" id="editable" aria-label="Editable text">Edit here</div><div style="height:2400px;width:1800px">Long and wide page</div></body></html>',
+    ),
+    writeFile(
+      path.join(root, 'docs', 'sample.ts'),
+      'export const message: string = "<script>unsafe</script>";\r\n// 日本語のコメント\r\nconsole.log(message);\r\n',
+    ),
+    writeFile(
+      path.join(root, 'docs', 'sample.py'),
+      'def greet(name: str):\n    return "Hello, " + name\n',
+    ),
+    writeFile(
+      path.join(root, 'docs', 'sample.json'),
+      '{"enabled": true, "count": 42}\n',
+    ),
+    writeFile(
+      path.join(root, 'docs', 'sample.css'),
+      'body { color: #123456; }\n',
+    ),
     writeFile(path.join(root, 'empty.txt'), ''),
     writeFile(
       path.join(root, 'README.md'),

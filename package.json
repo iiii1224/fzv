@@ -12,6 +12,7 @@
   "files": [
     "dist/",
     "LICENSE",
+    "licenses/",
     "THIRD_PARTY_NOTICES.md"
   ],
   "license": "MIT",
@@ -37,7 +38,11 @@
   "devDependencies": {
     "@playwright/test": "^1.64.1",
     "@types/node": "^24.0.0",
+    "@vscode/codicons": "0.0.46-24",
+    "dompurify": "3.4.17",
+    "marked": "18.1.1",
     "prettier": "3.9.10",
+    "shiki": "4.5.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.4"
   }

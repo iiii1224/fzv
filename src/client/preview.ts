@@ -1,7 +1,22 @@
 import type { ProjectFile } from '../shared.js';
+import { icon } from './icons.js';
+import { markdownView, sourceView } from './text.js';
+
+export type PreviewMode = 'viewer' | 'source';
+
+export function hasViewer(file: ProjectFile): boolean {
+  return (
+    file.kind === 'html' || (file.kind === 'text' && /\.md$/i.test(file.name))
+  );
+}
+
+export function defaultPreviewMode(file: ProjectFile): PreviewMode {
+  return file.kind === 'text' && !hasViewer(file) ? 'source' : 'viewer';
+}
 
 export interface PreviewPane {
   element: HTMLElement;
+  setMode?(mode: PreviewMode): void;
   dispose(): void;
 }
 export function fileUrl(
@@ -20,7 +35,11 @@ function errorMessage(pane: HTMLElement, message: string): void {
   pane.replaceChildren(text);
 }
 
-export function createPreview(file: ProjectFile, revision = 0): PreviewPane {
+export function createPreview(
+  file: ProjectFile,
+  revision = 0,
+  mode: PreviewMode = defaultPreviewMode(file),
+): PreviewPane {
   const element = document.createElement('section');
   element.className = 'preview-pane';
   element.hidden = true;
@@ -29,10 +48,93 @@ export function createPreview(file: ProjectFile, revision = 0): PreviewPane {
   const controller = new AbortController();
   const signal = controller.signal;
   const url = fileUrl(file, revision);
-  if (file.kind === 'html' || file.kind === 'pdf') {
+  let setMode: PreviewPane['setMode'];
+  if (file.kind === 'text' || file.kind === 'html') {
+    const viewer = document.createElement('div');
+    viewer.className = 'viewer-surface';
+    const source = document.createElement('div');
+    source.className = 'source-surface';
+    source.textContent = 'Loading…';
+    const dualMode = hasViewer(file);
+    if (dualMode) element.append(viewer);
+    element.append(source);
+    if (!dualMode) mode = 'source';
+    let currentMode = mode;
+    let content: string | undefined;
+    let sourceRendered = false;
+    let viewerRendered = false;
+    const renderText = () => {
+      if (content === undefined || signal.aborted) return;
+      if (currentMode === 'source' && !sourceRendered) {
+        source.replaceChildren(sourceView(content, file.name, signal));
+        sourceRendered = true;
+      }
+      if (currentMode === 'viewer' && file.kind === 'text' && !viewerRendered) {
+        viewer.replaceChildren(markdownView(content, file.path));
+        viewerRendered = true;
+      }
+    };
+    let textRequest: Promise<void> | undefined;
+    const loadText = () => {
+      textRequest ??= fetch(fileUrl(file, revision, true), { signal })
+        .then((response) => {
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          return response.text();
+        })
+        .then((text) => {
+          content = text;
+          renderText();
+        })
+        .catch((error) => {
+          if (signal.aborted) return;
+          const message = `Could not load ${file.path}: ${error}`;
+          errorMessage(source, message);
+          if (file.kind === 'text') errorMessage(viewer, message);
+        });
+    };
+    if (file.kind === 'html') {
+      const frame = document.createElement('iframe');
+      frame.title = file.path;
+      frame.setAttribute('sandbox', 'allow-scripts');
+      viewer.append(frame);
+      // Load HTML only when its viewer is requested; retain the frame on mode switches.
+      setMode = (next) => {
+        currentMode = next;
+        viewer.hidden = next !== 'viewer';
+        source.hidden = next !== 'source';
+        if (next === 'source') {
+          loadText();
+          renderText();
+        } else if (!frame.hasAttribute('src')) {
+          frame.src = url;
+          void fetch(url, { method: 'HEAD', signal })
+            .then((response) => {
+              if (!response.ok)
+                errorMessage(
+                  viewer,
+                  `Could not load ${file.path} (HTTP ${response.status}).`,
+                );
+            })
+            .catch((error) => {
+              if (!signal.aborted) errorMessage(viewer, String(error));
+            });
+        }
+      };
+    } else {
+      viewer.textContent = 'Loading…';
+      loadText();
+      setMode = (next) => {
+        if (!dualMode) next = 'source';
+        currentMode = next;
+        viewer.hidden = next !== 'viewer';
+        source.hidden = next !== 'source';
+        renderText();
+      };
+    }
+    setMode(mode);
+  } else if (file.kind === 'pdf') {
     const frame = document.createElement('iframe');
     frame.title = file.path;
-    if (file.kind === 'html') frame.setAttribute('sandbox', 'allow-scripts');
     frame.src = url;
     element.append(frame);
     // Verify availability separately: browser PDF plugins do not report useful iframe errors.
@@ -103,7 +205,8 @@ export function createPreview(file: ProjectFile, revision = 0): PreviewPane {
       el.addEventListener('click', action, { signal });
       return el;
     };
-    const out = button('Zoom out', '−', () => setZoom(zoom / 1.25));
+    const out = button('Zoom out', '', () => setZoom(zoom / 1.25));
+    out.append(icon('remove'));
     out.className = 'image-zoom-out';
     const fit = button('Fit image to viewer', 'Fit', () => {
       x = 0;
@@ -111,7 +214,8 @@ export function createPreview(file: ProjectFile, revision = 0): PreviewPane {
       setZoom(1);
     });
     fit.className = 'image-fit';
-    const into = button('Zoom in', '+', () => setZoom(zoom * 1.25));
+    const into = button('Zoom in', '', () => setZoom(zoom * 1.25));
+    into.append(icon('add'));
     into.className = 'image-zoom-in';
     toolbar.append(out, zoomValue, fit, into);
     stage.addEventListener(
@@ -159,26 +263,10 @@ export function createPreview(file: ProjectFile, revision = 0): PreviewPane {
     stage.addEventListener('pointercancel', stop, { signal });
     stage.addEventListener('lostpointercapture', stop, { signal });
     element.append(stage, toolbar);
-  } else {
-    const text = document.createElement('pre');
-    text.className = 'text-preview';
-    text.textContent = 'Loading…';
-    element.append(text);
-    void fetch(url, { signal })
-      .then((response) => {
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return response.text();
-      })
-      .then((content) => {
-        text.textContent = content;
-      })
-      .catch((error) => {
-        if (!signal.aborted)
-          errorMessage(element, `Could not load ${file.path}: ${error}`);
-      });
   }
   return {
     element,
+    setMode,
     dispose: () => {
       controller.abort();
       element.querySelectorAll('iframe').forEach((frame) => frame.remove());

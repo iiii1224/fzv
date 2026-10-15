@@ -1,0 +1,54 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+/* Adapted from VS Code 1.106.0 multieditortabscontrol.css.
+ * Changes: selected basic tab rules and scoped selectors to the fzv workspace.
+ * See README.md in this directory and licenses/vscode-MIT.txt. */
+
+.workspace .tabs-container {
+  display: flex;
+  height: var(--editor-group-tab-height);
+  scrollbar-width: none;
+}
+
+.workspace .tabs-container > .tab {
+  position: relative;
+  display: flex;
+  white-space: nowrap;
+  cursor: pointer;
+  height: var(--editor-group-tab-height);
+  box-sizing: border-box;
+  padding-left: 10px;
+  outline-offset: -2px;
+}
+
+.workspace .tabs-container > .tab {
+  background-color: var(--vscode-tab-unfocusedInactiveBackground);
+}
+
+.workspace .tabs-container > .tab {
+  background-color: var(--vscode-tab-inactiveBackground);
+}
+
+.workspace .tabs-container > .tab.active {
+  background-color: var(--vscode-tab-activeBackground);
+}
+
+.workspace .tabs-container > .tab {
+  color: var(--vscode-tab-unfocusedInactiveForeground);
+}
+
+.workspace .tabs-container > .tab {
+  color: var(--vscode-tab-inactiveForeground);
+}
+
+.workspace .tabs-container > .tab.active {
+  color: var(--vscode-tab-activeForeground);
+}
+
+.workspace .tabs-container > .tab .tab-label {
+  margin-top: auto;
+  margin-bottom: auto;
+  line-height: var(--editor-group-tab-height);
+}

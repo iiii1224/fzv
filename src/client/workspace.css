@@ -4,28 +4,134 @@
   inset: 0;
   overflow: hidden;
 }
+.viewer-surface,
+.source-surface {
+  height: 100%;
+  overflow: auto;
+  background: var(--vscode-editor-background);
+}
 .preview-pane iframe {
   width: 100%;
   height: 100%;
   border: 0;
   display: block;
-  background: #e5e7eb;
+  background: var(--vscode-editor-background);
 }
 .text-preview {
   margin: 0;
   height: 100%;
   overflow: auto;
   padding: 25px 30px;
-  font:
-    12px/1.8 'SFMono-Regular',
-    Consolas,
-    'Liberation Mono',
-    monospace;
+  font: 13px/20px var(--mono);
   tab-size: 4;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  color: #d6dae2;
-  background: #24272d;
+  color: var(--vscode-editor-foreground);
+  background: var(--vscode-editor-background);
+}
+.source-preview {
+  height: 100%;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  overflow: auto;
+  background: var(--vscode-editor-background);
+}
+.line-numbers,
+.source-text {
+  font: 13px/20px var(--mono);
+  margin: 0;
+  min-height: 100%;
+  padding: 12px 16px;
+}
+.syntax-token {
+  color: var(--syntax-light);
+  font-style: var(--syntax-light-style);
+  font-weight: var(--syntax-light-weight);
+  text-decoration: var(--syntax-light-decoration);
+}
+:root[data-theme='dark'] .syntax-token {
+  color: var(--syntax-dark);
+  font-style: var(--syntax-dark-style);
+  font-weight: var(--syntax-dark-weight);
+  text-decoration: var(--syntax-dark-decoration);
+}
+.line-numbers {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  color: var(--vscode-editorLineNumber-foreground);
+  background: var(--vscode-editor-background);
+  text-align: right;
+  user-select: none;
+  min-width: 60px;
+}
+.source-text {
+  height: auto;
+  overflow: visible;
+  white-space: pre;
+  overflow-wrap: normal;
+}
+.markdown-preview {
+  max-width: 900px;
+  margin: auto;
+  padding: 24px 30px;
+  font:
+    14px/1.7 -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
+  color: var(--vscode-editor-foreground);
+  overflow-wrap: anywhere;
+}
+.markdown-preview > :first-child {
+  margin-top: 0;
+}
+.markdown-preview :is(h1, h2, h3, h4, h5, h6) {
+  line-height: 1.3;
+  margin: 1.3em 0 0.6em;
+  font-weight: 600;
+}
+.markdown-preview :is(h1, h2) {
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--line);
+}
+.markdown-preview a {
+  color: var(--vscode-textLink-foreground);
+}
+.markdown-preview code {
+  font: 0.9em var(--mono);
+  background: var(--vscode-textCodeBlock-background);
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+.markdown-preview pre {
+  overflow: auto;
+  padding: 16px;
+  background: var(--vscode-textCodeBlock-background);
+  line-height: 1.6;
+}
+.markdown-preview pre code {
+  padding: 0;
+}
+.markdown-preview blockquote {
+  margin-left: 0;
+  padding-left: 16px;
+  border-left: 3px solid var(--line);
+  color: var(--muted);
+}
+.markdown-preview table {
+  display: block;
+  overflow: auto;
+  border-collapse: collapse;
+}
+.markdown-preview :is(th, td) {
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+}
+.markdown-preview img {
+  max-width: 100%;
+  height: auto;
 }
 .image-stage {
   position: absolute;
@@ -36,12 +142,12 @@
   overflow: hidden;
   padding: 24px;
   touch-action: none;
-  background-color: #f2f3f5;
+  background-color: var(--vscode-editor-background);
   background-image:
-    linear-gradient(45deg, #e9ebee 25%, transparent 25%),
-    linear-gradient(-45deg, #e9ebee 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #e9ebee 75%),
-    linear-gradient(-45deg, transparent 75%, #e9ebee 75%);
+    linear-gradient(45deg, var(--image-grid) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--image-grid) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--image-grid) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--image-grid) 75%);
   background-size: 16px 16px;
   background-position:
     0 0,
@@ -75,9 +181,9 @@
   align-items: center;
   gap: 3px;
   padding: 5px;
-  border: 1px solid #e2e4e8;
+  border: 1px solid var(--line);
   border-radius: 6px;
-  background: #ffffffed;
+  background: var(--vscode-editorWidget-background);
   box-shadow: 0 2px 10px #0000000a;
 }
 .image-toolbar button {
@@ -86,11 +192,11 @@
   background: transparent;
   min-width: 30px;
   height: 29px;
-  color: #535b68;
+  color: var(--vscode-icon-foreground);
   font-size: 17px;
 }
 .image-toolbar button:hover {
-  background: #eceef2;
+  background: var(--vscode-toolbar-hoverBackground);
 }
 .image-toolbar .image-fit {
   font-size: 11px;
@@ -103,7 +209,7 @@
     10px 'SFMono-Regular',
     Consolas,
     monospace;
-  color: #79818b;
+  color: var(--muted);
 }
 .preview-error {
   display: grid;
@@ -111,7 +217,7 @@
   text-align: center;
   padding: 30px;
   height: 100%;
-  color: #8c5551;
+  color: var(--vscode-errorForeground);
   font-size: 13px;
 }
 .preview-error p {

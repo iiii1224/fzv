@@ -1,11 +1,20 @@
+import '@vscode/codicons/dist/codicon.css';
 import './style.css';
 import { PRODUCT_NAME } from '../shared.js';
 import type { FileIndex, ProjectEntry, ProjectFile } from '../shared.js';
 import { FuzzyIndex } from './search.js';
 import { readSession, writeSession } from './session.js';
 import type { SessionStorage } from './session.js';
-import { createPreview, fileUrl } from './preview.js';
-import type { PreviewPane } from './preview.js';
+import {
+  createPreview,
+  defaultPreviewMode,
+  fileUrl,
+  hasViewer,
+} from './preview.js';
+import type { PreviewMode, PreviewPane } from './preview.js';
+import { fileIcon, icon } from './icons.js';
+import { initializeTheme } from './theme.js';
+import { installNavigation } from '../navigation.js';
 
 function byId<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
@@ -23,13 +32,18 @@ const noTabs = byId('no-tabs');
 const currentPath = byId('current-path');
 const reload = byId<HTMLButtonElement>('reload-file');
 const open = byId<HTMLAnchorElement>('open-file');
+const previewModes = byId('preview-modes');
+const viewerMode = byId<HTMLButtonElement>('viewer-mode');
+const sourceMode = byId<HTMLButtonElement>('source-mode');
 const refresh = byId<HTMLButtonElement>('refresh-files');
 const notification = byId('notification');
+initializeTheme(byId<HTMLButtonElement>('theme-toggle'));
 interface Tab {
   file: ProjectFile;
   pane: PreviewPane;
   element: HTMLElement;
   button: HTMLButtonElement;
+  mode: PreviewMode;
 }
 let files: ProjectFile[] = [];
 let index = new FuzzyIndex([]);
@@ -75,7 +89,7 @@ function renderResults(): void {
   const nodes = visible.map((file, i) => {
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = 'result';
+    button.className = 'result monaco-list-row quick-input-list-entry';
     button.title = file.path;
     button.setAttribute('aria-label', file.path);
     button.classList.toggle('active', file.path === activePath);
@@ -93,7 +107,7 @@ function renderResults(): void {
     path.className = 'result-path';
     path.textContent = file.path;
     text.append(name, path);
-    button.append(text);
+    button.append(fileIcon(file), text);
     button.addEventListener('click', () => selectEntry(file));
     return button;
   });
@@ -112,14 +126,25 @@ function renderResults(): void {
   if (found.total > visible.length)
     count.textContent += ` · showing ${visible.length}`;
 }
+function restorePreviewFocus(): void {
+  (
+    tabs.find((tab) => tab.file.path === activePath)?.button ?? byId('main')
+  ).focus();
+}
 function setSearchOpen(show: boolean): void {
+  navigation.cancel();
   if (show) {
     search.value = '';
     highlighted = 0;
     if (!searchPanel.open) searchPanel.showModal();
     search.focus();
     renderResults();
-  } else searchPanel.close();
+  } else {
+    searchPanel.close();
+    // Native dialog close events are queued. Restore focus now so a following
+    // shortcut cannot be delivered to the search field after it is hidden.
+    restorePreviewFocus();
+  }
 }
 function focusSearch(): void {
   setSearchOpen(true);
@@ -137,6 +162,7 @@ function selectEntry(entry: ProjectEntry): void {
 }
 
 function activate(path: string | null, persist = true): void {
+  navigation.cancel();
   const active = tabs.find((tab) => tab.file.path === path);
   activePath = active?.file.path ?? null;
   for (const tab of tabs) {
@@ -152,6 +178,9 @@ function activate(path: string | null, persist = true): void {
   currentPath.title = active?.file.path ?? '';
   reload.disabled = !active;
   open.hidden = !active;
+  previewModes.hidden = !active || !hasViewer(active.file);
+  viewerMode.setAttribute('aria-pressed', String(active?.mode === 'viewer'));
+  sourceMode.setAttribute('aria-pressed', String(active?.mode === 'source'));
   if (active) {
     open.href = fileUrl(active.file, revision);
     active.element.scrollIntoView({ block: 'nearest', inline: 'nearest' });
@@ -173,10 +202,12 @@ function makeTab(file: ProjectFile): Tab {
   element.setAttribute('role', 'presentation');
   const button = document.createElement('button');
   button.type = 'button';
-  button.className = 'tab-select';
+  button.className = 'tab-select tab-label';
   button.setAttribute('role', 'tab');
   button.id = id;
-  button.textContent = file.name;
+  const name = document.createElement('span');
+  name.textContent = file.name;
+  button.append(fileIcon(file), name);
   button.title = file.path;
   button.setAttribute('aria-label', file.path);
   button.setAttribute('aria-controls', pane.element.id);
@@ -203,13 +234,13 @@ function makeTab(file: ProjectFile): Tab {
   const close = document.createElement('button');
   close.type = 'button';
   close.className = 'tab-close';
-  close.textContent = '×';
+  close.append(icon('close'));
   close.setAttribute('aria-label', `Close ${file.path}`);
   close.title = 'Close tab';
   close.addEventListener('click', () => closeTab(file.path, true));
   element.append(button, close);
   tabbar.append(element);
-  return { file, pane, element, button };
+  return { file, pane, element, button, mode: defaultPreviewMode(file) };
 }
 function openTab(file: ProjectFile): void {
   if (!tabs.some((tab) => tab.file.path === file.path))
@@ -238,9 +269,10 @@ function cycle(direction: number): void {
   activate(tabs[(i + direction + tabs.length) % tabs.length].file.path);
 }
 function reloadActive(): void {
+  navigation.cancel();
   const tab = tabs.find((tab) => tab.file.path === activePath);
   if (!tab) return;
-  const pane = createPreview(tab.file, ++revision);
+  const pane = createPreview(tab.file, ++revision, tab.mode);
   pane.element.id = tab.pane.element.id;
   pane.element.setAttribute('aria-labelledby', tab.button.id);
   tab.pane.dispose();
@@ -248,6 +280,15 @@ function reloadActive(): void {
   preview.append(pane.element);
   pane.element.hidden = false;
   open.href = fileUrl(tab.file, revision);
+}
+function setPreviewMode(mode: PreviewMode): void {
+  navigation.cancel();
+  const tab = tabs.find((tab) => tab.file.path === activePath);
+  if (!tab?.pane.setMode || !hasViewer(tab.file)) return;
+  tab.mode = mode;
+  tab.pane.setMode(mode);
+  viewerMode.setAttribute('aria-pressed', String(mode === 'viewer'));
+  sourceMode.setAttribute('aria-pressed', String(mode === 'source'));
 }
 async function loadIndex(initial = false): Promise<void> {
   refresh.disabled = true;
@@ -327,9 +368,11 @@ search.addEventListener('keydown', (event) => {
   }
 });
 searchPanel.addEventListener('close', () => {
-  (
-    tabs.find((tab) => tab.file.path === activePath)?.button ?? byId('main')
-  ).focus();
+  if (!searchPanel.open) restorePreviewFocus();
+});
+searchPanel.addEventListener('cancel', (event) => {
+  event.preventDefault();
+  setSearchOpen(false);
 });
 searchPanel.addEventListener('click', (event) => {
   if (event.target !== searchPanel) return;
@@ -345,36 +388,18 @@ searchPanel.addEventListener('click', (event) => {
 byId('close-search').addEventListener('click', () => setSearchOpen(false));
 byId('find-file').addEventListener('click', focusSearch);
 reload.addEventListener('click', reloadActive);
+viewerMode.addEventListener('click', () => setPreviewMode('viewer'));
+sourceMode.addEventListener('click', () => setPreviewMode('source'));
 refresh.addEventListener('click', () => {
   void loadIndex();
 });
 window.addEventListener('keydown', (event) => {
-  const typing = document.activeElement?.matches(
-    'input,textarea,select,[contenteditable="true"]',
-  );
-  if (
-    !typing &&
-    !searchPanel.open &&
-    !event.ctrlKey &&
-    !event.metaKey &&
-    !event.altKey &&
-    event.key.toLowerCase() === 'r'
-  ) {
-    event.preventDefault();
-    reloadActive();
-    return;
-  }
-  if (
-    !typing &&
-    !event.ctrlKey &&
-    !event.metaKey &&
-    !event.altKey &&
-    ['f', '/'].includes(event.key.toLowerCase())
-  ) {
-    event.preventDefault();
-    focusSearch();
-    return;
-  }
+  if (event.defaultPrevented || event.isComposing) return;
+  const focused = document.activeElement;
+  const typing =
+    focused instanceof HTMLElement &&
+    (focused.isContentEditable ||
+      Boolean(focused.closest('input,textarea,select,[role="textbox"]')));
   if (
     event.altKey &&
     !event.ctrlKey &&
@@ -409,5 +434,37 @@ window.addEventListener('keydown', (event) => {
       active.pane.element.querySelector<HTMLButtonElement>(action)?.click();
     }
   }
+});
+const navigation = installNavigation({
+  onSearch: focusSearch,
+  onReload: () => {
+    if (!searchPanel.open) reloadActive();
+  },
+  getScrollRoot: () => {
+    if (searchPanel.open) return results;
+    const active = tabs.find((tab) => tab.file.path === activePath);
+    return (
+      [
+        ...(active?.pane.element.querySelectorAll<HTMLElement>(
+          '.source-preview, .viewer-surface',
+        ) ?? []),
+      ].find((element) => element.getClientRects().length > 0) ?? null
+    );
+  },
+});
+window.addEventListener('message', (event) => {
+  const active = tabs.find((tab) => tab.file.path === activePath);
+  const frame = active?.pane.element.querySelector('iframe');
+  if (
+    !frame ||
+    event.source !== frame.contentWindow ||
+    event.origin !== 'null' ||
+    active?.file.kind !== 'html' ||
+    active.mode !== 'viewer'
+  )
+    return;
+  if (event.data?.type !== 'fzv:shortcut') return;
+  if (event.data.key === '/') focusSearch();
+  if (event.data.key === 'r') reloadActive();
 });
 void loadIndex(true);

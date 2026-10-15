@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { pipeline } from 'node:stream/promises';
 import { Catalog, contentType, FileUnavailable } from './catalog.js';
 import type { OpenProjectFile } from './catalog.js';
+import { installNavigation } from '../navigation.js';
 
 const UI_ROOT = fileURLToPath(new URL('../client/', import.meta.url));
 const UI_CSP =
@@ -60,7 +61,17 @@ export function renderHtml(source: string, relative: string): string {
       ? ''
       : parent.split('/').map(encodeURIComponent).join('/') + '/');
   // The first base element wins. Insert ours before any user content, without parsing/replacing HTML with regex.
-  return `<!doctype html><base href="${base}">` + source.replace(/^\uFEFF/, '');
+  // The same self-contained keyboard handler runs inside the opaque sandbox.
+  // Only two fixed shortcut messages cross to the parent; it validates the sender.
+  const navigation = `<script>(${installNavigation.toString()})({
+    onSearch: () => { if (parent !== window) parent.postMessage({type: 'fzv:shortcut', key: '/'}, '*'); },
+    onReload: () => { if (parent !== window) parent.postMessage({type: 'fzv:shortcut', key: 'r'}, '*'); }
+  });</script>`;
+  return (
+    `<!doctype html><base href="${base}">` +
+    navigation +
+    source.replace(/^\uFEFF/, '')
+  );
 }
 
 async function sendProjectFile(

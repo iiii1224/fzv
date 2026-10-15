@@ -40,6 +40,17 @@ test(
       assert.ok(
         packed.files.some((file) => file.path === 'THIRD_PARTY_NOTICES.md'),
       );
+      for (const license of [
+        'codicons-CC-BY-4.0.txt',
+        'codicons-MIT.txt',
+        'marked.txt',
+        'dompurify-APACHE-2.0.txt',
+        'vscode-MIT.txt',
+        'shiki/shiki-LICENSE',
+      ])
+        assert.ok(
+          packed.files.some((file) => file.path === `licenses/${license}`),
+        );
       assert.ok(
         !packed.files.some((file) =>
           /^(src|test|node_modules)\//.test(file.path),
@@ -133,6 +144,36 @@ test(
       const js = /<script[^>]+src="([^"]+)"/.exec(html)?.[1];
       assert.ok(js);
       assert.equal((await fetch(new URL(js, origin))).status, 200);
+      const css = /<link[^>]+href="([^"]+\.css)"/.exec(html)?.[1];
+      assert.ok(css);
+      const stylesheet = await (await fetch(new URL(css, origin))).text();
+      const font = /url\(["']?([^\s"')]+\.ttf(?:\?[^\s"')]*)?)["']?\)/.exec(
+        stylesheet,
+      )?.[1];
+      assert.ok(
+        font,
+        'The packed stylesheet references a local Codicons font.',
+      );
+      const fontResponse = await fetch(new URL(font, new URL(css, origin)));
+      assert.equal(fontResponse.status, 200);
+      assert.match(fontResponse.headers.get('content-type'), /^font\/ttf/);
+      const highlightAssets = packed.files.filter((file) =>
+        /^dist\/client\/assets\/(highlight|typescript|light-plus)-.*\.js$/.test(
+          file.path,
+        ),
+      );
+      assert.ok(
+        highlightAssets.some((file) => file.path.includes('/highlight-')),
+      );
+      assert.ok(
+        highlightAssets.some((file) => file.path.includes('/typescript-')),
+      );
+      for (const asset of highlightAssets)
+        assert.equal(
+          (await fetch(new URL(asset.path.replace('dist/client/', ''), origin)))
+            .status,
+          200,
+        );
       const index = await (await fetch(new URL('/api/files', origin))).json();
       assert.equal(index.project.name, 'project');
       assert.ok(index.files.some((file) => file.path === 'README.md'));
