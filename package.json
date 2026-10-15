@@ -1,0 +1,44 @@
+{
+  "name": "fzv",
+  "version": "0.1.0",
+  "description": "A local file viewer for agent-driven development. Fuzzy find, open, and preview project files without an IDE.",
+  "type": "module",
+  "bin": {
+    "fzv": "dist/server/cli.js"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "files": [
+    "dist/",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "license": "MIT",
+  "keywords": [
+    "cli",
+    "file-viewer",
+    "fuzzy-search",
+    "preview",
+    "coding-agent"
+  ],
+  "scripts": {
+    "dev": "npm run build && node dist/server/cli.js",
+    "dev:ui": "vite --host 127.0.0.1",
+    "check": "tsc --noEmit -p tsconfig.server.json && tsc -p tsconfig.client.json",
+    "build:server": "tsc -p tsconfig.server.json",
+    "build": "npm run check && npm run build:server && vite build",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "test:browser": "playwright test",
+    "prepack": "npm run build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1",
+    "@types/node": "^24.0.0",
+    "prettier": "3.9.10",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4"
+  }
+}

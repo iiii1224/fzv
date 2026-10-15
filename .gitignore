@@ -1,0 +1,7 @@
+node_modules/
+dist/
+*.tgz
+playwright-report/
+test-results/
+output/
+.playwright-cli/
