@@ -348,7 +348,9 @@ kbd {
   padding: 0 12px;
 }
 .current-path {
-  flex: 1;
+  flex: 0 1 auto;
+  width: max-content;
+  max-width: calc(100% - 34px);
   min-width: 0;
   text-overflow: ellipsis;
   overflow: hidden;
@@ -356,10 +358,22 @@ kbd {
   font-size: 12px;
   color: var(--muted);
 }
+.current-file-path {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 65%;
+}
+.current-file-path .copy-path {
+  flex: 0 0 auto;
+}
 .preview-actions {
   display: flex;
   align-items: center;
   gap: 12px;
+  margin-left: auto;
 }
 .preview-modes {
   display: flex;

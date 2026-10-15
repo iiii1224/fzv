@@ -55,6 +55,29 @@ test('indexes supported files and excludes secrets, dependencies, oversized file
   assert.ok(index.directories.every((item) => item.kind === 'directory'));
   assert.equal(index.project.maxFileSize, 20 * 1024 * 1024);
 });
+test('looks up only validated files requested for fast session restoration', async () => {
+  const query = new URLSearchParams();
+  for (const path of [
+    'README.md',
+    'docs/page.html',
+    'missing.txt',
+    '../outside/secret.txt',
+  ])
+    query.append('path', path);
+  const response = await get(`/api/session-files?${query}`);
+  assert.equal(response.status, 200);
+  assert.deepEqual(
+    (await response.json()).map((item) => [item.path, item.kind]),
+    [
+      ['README.md', 'text'],
+      ['docs/page.html', 'html'],
+    ],
+  );
+  const excessive = new URLSearchParams();
+  for (let index = 0; index < 33; index++)
+    excessive.append('path', 'README.md');
+  assert.equal((await get(`/api/session-files?${excessive}`)).status, 400);
+});
 test('directories cannot be served as files or HTML assets', async () => {
   for (const path of ['docs', 'empty-directory', 'docs/nested']) {
     assert.equal((await file(path)).status, 404);

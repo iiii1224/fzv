@@ -112,7 +112,19 @@
           hidden
         ></button>
         <div class="preview-toolbar">
-          <span id="current-path">Ready when you are</span>
+          <div class="current-file-path">
+            <span id="current-path">Ready when you are</span>
+            <button
+              id="copy-path"
+              class="toolbar-button copy-path"
+              type="button"
+              aria-label="Copy file path"
+              title="Copy file path"
+              disabled
+            >
+              <i class="codicon codicon-copy" aria-hidden="true"></i>
+            </button>
+          </div>
           <div class="preview-actions">
             <div
               id="preview-modes"
@@ -167,6 +179,15 @@
             >
               <i class="codicon codicon-refresh" aria-hidden="true"></i>
               <span>Reload</span></button
+            ><a
+              id="download-file"
+              class="toolbar-button"
+              aria-label="Download current file"
+              title="Download current file"
+              download
+              hidden
+              ><i class="codicon codicon-cloud-download" aria-hidden="true"></i
+              ><span>Download</span></a
             ><a
               id="open-file"
               class="toolbar-button"

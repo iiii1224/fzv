@@ -1,10 +1,13 @@
 export interface NavigationOptions {
   getScrollRoot?: () => HTMLElement | null;
+  onScroll?: (
+    key: 'h' | 'j' | 'k' | 'l' | 'top' | 'bottom',
+  ) => boolean;
   onSearch?: () => void;
   onReload?: () => void;
   onFocus?: () => void;
   onHintActivate?: (target: HTMLElement) => boolean;
-  bridgeEditorGroups?: boolean;
+  bridgeWorkspace?: boolean;
 }
 
 // Keep this function self-contained: the server also serializes it into sandboxed
@@ -12,6 +15,7 @@ export interface NavigationOptions {
 export function installNavigation(options: NavigationOptions = {}): {
   cancel(): void;
   showHints(): void;
+  showHelp(): void;
   dispose(): void;
 } {
   const lifecycle = new AbortController();
@@ -21,7 +25,7 @@ export function installNavigation(options: NavigationOptions = {}): {
   let overlay: HTMLElement | null = null;
   let hints: { label: string; target: HTMLElement; badge: HTMLElement }[] = [];
   let prefix = '';
-  let multipleEditorGroups = false;
+  let help: HTMLDialogElement | null = null;
 
   const cancel = () => {
     overlay?.remove();
@@ -29,6 +33,124 @@ export function installNavigation(options: NavigationOptions = {}): {
     hints = [];
     prefix = '';
     pendingG = 0;
+  };
+  const closeHelp = () => {
+    if (!help) return;
+    const dialog = help;
+    help = null;
+    if (dialog.open) dialog.close();
+    dialog.remove();
+  };
+  const showHelp = () => {
+    if (help) return;
+    cancel();
+    const dialog = document.createElement('dialog');
+    help = dialog;
+    dialog.setAttribute('aria-labelledby', 'fzv-keyboard-help-title');
+    Object.assign(dialog.style, {
+      position: 'fixed',
+      inset: '0',
+      margin: 'auto',
+      width: 'min(520px, calc(100vw - 28px))',
+      maxHeight: 'min(80vh, 640px)',
+      overflow: 'auto',
+      padding: '20px 22px',
+      border: '1px solid #8888',
+      borderRadius: '8px',
+      background: '#f8f8f8',
+      color: '#202020',
+      boxShadow: '0 12px 40px #0005',
+      font: '13px/1.5 system-ui, sans-serif',
+      zIndex: '2147483647',
+    });
+    const heading = document.createElement('div');
+    Object.assign(heading.style, {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '12px',
+      marginBottom: '14px',
+    });
+    const title = document.createElement('h2');
+    title.id = 'fzv-keyboard-help-title';
+    title.textContent = 'Keyboard shortcuts';
+    Object.assign(title.style, { flex: '1', margin: '0', fontSize: '16px' });
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.textContent = 'Close';
+    close.setAttribute('aria-label', 'Close keyboard shortcuts');
+    Object.assign(close.style, {
+      padding: '5px 9px',
+      border: '1px solid #8888',
+      borderRadius: '4px',
+      background: '#fff',
+      color: 'inherit',
+      font: 'inherit',
+      cursor: 'pointer',
+    });
+    close.addEventListener('click', closeHelp, { signal });
+    heading.append(title, close);
+    const bindings: [string, string][] = [
+      ['/', 'Find a file'],
+      ['r', 'Reload the active preview'],
+      [
+        'f',
+        options.bridgeWorkspace
+          ? 'Show workspace hints'
+          : 'Show hints for links and controls',
+      ],
+      ['h j k l', 'Scroll the active preview'],
+      ['gg', 'Scroll to the top'],
+      ['G', 'Scroll to the bottom'],
+      ['?', 'Show this keyboard help'],
+      ['Escape', 'Cancel hints or close this help'],
+    ];
+    if (!options.bridgeWorkspace) {
+      bindings.push(
+        ['Ctrl/Cmd + Tab', 'Switch tabs in the focused group'],
+        ['Alt + j / k', 'Switch tabs in the focused group'],
+        ['Ctrl/Cmd + 1–9', 'Focus an editor group'],
+        ['Ctrl/Cmd + \\', 'Split the editor to the right'],
+        ['Ctrl/Cmd + Shift + \\', 'Split the editor below'],
+        ['Ctrl/Cmd + f', 'Find in a PDF'],
+        ['Ctrl/Cmd + + / − / 0', 'Zoom an image or PDF'],
+      );
+    }
+    const list = document.createElement('div');
+    Object.assign(list.style, {
+      display: 'grid',
+      gridTemplateColumns: 'minmax(125px, auto) minmax(0, 1fr)',
+      gap: '7px 14px',
+      alignItems: 'center',
+    });
+    for (const [keys, description] of bindings) {
+      const label = document.createElement('kbd');
+      label.textContent = keys;
+      Object.assign(label.style, {
+        justifySelf: 'start',
+        padding: '2px 5px',
+        border: '1px solid #aaa',
+        borderRadius: '3px',
+        background: '#eee',
+        color: 'inherit',
+        font: '11px ui-monospace, monospace',
+        whiteSpace: 'nowrap',
+      });
+      const text = document.createElement('span');
+      text.textContent = description;
+      list.append(label, text);
+    }
+    dialog.append(heading, list);
+    dialog.addEventListener(
+      'cancel',
+      (event) => {
+        event.preventDefault();
+        closeHelp();
+      },
+      { signal },
+    );
+    document.body.append(dialog);
+    dialog.showModal();
+    close.focus();
   };
   const editable = (element: EventTarget | null) =>
     element instanceof HTMLElement &&
@@ -133,6 +255,19 @@ export function installNavigation(options: NavigationOptions = {}): {
     }
     return document.scrollingElement as HTMLElement | null;
   };
+  const scroll = (key: 'h' | 'j' | 'k' | 'l' | 'top' | 'bottom') => {
+    const root = scrollRoot();
+    if (!root) return;
+    if (key === 'top') root.scrollTo({ top: 0, behavior: 'instant' });
+    else if (key === 'bottom')
+      root.scrollTo({ top: root.scrollHeight, behavior: 'instant' });
+    else
+      root.scrollBy({
+        left: key === 'h' ? -64 : key === 'l' ? 64 : 0,
+        top: key === 'j' ? 64 : key === 'k' ? -64 : 0,
+        behavior: 'instant',
+      });
+  };
 
   window.addEventListener(
     'keydown',
@@ -153,6 +288,13 @@ export function installNavigation(options: NavigationOptions = {}): {
         event.preventDefault();
         event.stopImmediatePropagation();
       };
+      if (help) {
+        if (event.key === 'Escape') {
+          closeHelp();
+          consume();
+        }
+        return;
+      }
       if (event.key === 'Escape') {
         if (overlay || pendingG) {
           cancel();
@@ -190,6 +332,11 @@ export function installNavigation(options: NavigationOptions = {}): {
         options.onSearch();
         return;
       }
+      if (event.key === '?') {
+        consume();
+        showHelp();
+        return;
+      }
       if (event.key === 'r' && options.onReload) {
         consume();
         options.onReload();
@@ -197,7 +344,7 @@ export function installNavigation(options: NavigationOptions = {}): {
       }
       if (event.key === 'f' && !event.repeat) {
         consume();
-        if (options.bridgeEditorGroups && multipleEditorGroups)
+        if (options.bridgeWorkspace)
           parent.postMessage({ type: 'fzv:shortcut', key: 'f' }, '*');
         else showHints();
         return;
@@ -206,22 +353,16 @@ export function installNavigation(options: NavigationOptions = {}): {
         consume();
         if (event.repeat) return;
         const now = performance.now();
-        if (wasG && now - wasG < 800)
-          scrollRoot()?.scrollTo({ top: 0, behavior: 'instant' });
-        else pendingG = now;
+        if (wasG && now - wasG < 800) {
+          if (!options.onScroll?.('top')) scroll('top');
+        } else pendingG = now;
         return;
       }
       if (!['h', 'j', 'k', 'l', 'G'].includes(event.key)) return;
       consume();
-      const root = scrollRoot();
-      if (event.key === 'G')
-        root?.scrollTo({ top: root.scrollHeight, behavior: 'instant' });
-      else
-        root?.scrollBy({
-          left: event.key === 'h' ? -64 : event.key === 'l' ? 64 : 0,
-          top: event.key === 'j' ? 64 : event.key === 'k' ? -64 : 0,
-          behavior: 'instant',
-        });
+      const key: 'h' | 'j' | 'k' | 'l' | 'bottom' =
+        event.key === 'G' ? 'bottom' : (event.key as 'h' | 'j' | 'k' | 'l');
+      if (!options.onScroll?.(key)) scroll(key);
     },
     { capture: true, signal },
   );
@@ -230,14 +371,17 @@ export function installNavigation(options: NavigationOptions = {}): {
     'message',
     (event) => {
       if (
-        !options.bridgeEditorGroups ||
+        !options.bridgeWorkspace ||
         parent === window ||
         event.source !== parent
       )
         return;
-      if (event.data?.type === 'fzv:groups')
-        multipleEditorGroups = event.data.multiple === true;
       if (event.data?.type === 'fzv:show-hints') showHints();
+      if (
+        event.data?.type === 'fzv:scroll' &&
+        ['h', 'j', 'k', 'l', 'top', 'bottom'].includes(event.data.key)
+      )
+        scroll(event.data.key);
     },
     { signal },
   );
@@ -266,8 +410,10 @@ export function installNavigation(options: NavigationOptions = {}): {
   return {
     cancel,
     showHints,
+    showHelp,
     dispose: () => {
       cancel();
+      closeHelp();
       lifecycle.abort();
     },
   };

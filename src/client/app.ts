@@ -1,10 +1,15 @@
 import '@vscode/codicons/dist/codicon.css';
 import './style.css';
 import { PRODUCT_NAME } from '../shared.js';
-import type { FileIndex, ProjectEntry, ProjectFile } from '../shared.js';
+import type {
+  FileIndex,
+  ProjectEntry,
+  ProjectFile,
+  ProjectInfo,
+} from '../shared.js';
 import { FuzzyIndex } from './search.js';
 import { readSession, writeSession } from './session.js';
-import type { SessionStorage } from './session.js';
+import type { SavedSession, SessionStorage } from './session.js';
 import { Workspace } from './workspace.js';
 import { fileIcon } from './icons.js';
 import { initializeTheme } from './theme.js';
@@ -43,6 +48,60 @@ function notify(message: string): void {
   notificationTimer = setTimeout(() => {
     notification.hidden = true;
   }, 5000);
+}
+function copyWithBrowserCommand(text: string): boolean {
+  const active = document.activeElement;
+  const selection = window.getSelection();
+  const ranges = selection
+    ? Array.from({ length: selection.rangeCount }, (_, index) =>
+        selection.getRangeAt(index).cloneRange(),
+      )
+    : [];
+  const scrollX = window.scrollX;
+  const scrollY = window.scrollY;
+  const field = document.createElement('textarea');
+  field.value = text;
+  field.readOnly = true;
+  field.setAttribute('aria-hidden', 'true');
+  Object.assign(field.style, {
+    position: 'fixed',
+    left: '-10000px',
+    top: '0',
+    width: '1px',
+    height: '1px',
+    opacity: '0',
+    fontSize: '16px',
+  });
+  document.body.append(field);
+  let copied = false;
+  try {
+    field.focus({ preventScroll: true });
+    field.select();
+    copied = document.execCommand('copy');
+  } catch {
+    copied = false;
+  }
+  field.remove();
+  if (active instanceof HTMLElement && active.isConnected)
+    active.focus({ preventScroll: true });
+  if (selection) {
+    selection.removeAllRanges();
+    for (const range of ranges) selection.addRange(range);
+  }
+  window.scrollTo(scrollX, scrollY);
+  return copied;
+}
+async function copyToClipboard(text: string, label: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(text);
+    notify(`${label} copied to clipboard.`);
+  } catch {
+    notify(
+      copyWithBrowserCommand(text)
+        ? `${label} copied to clipboard.`
+        : `Could not copy ${label.toLowerCase()}.`,
+    );
+  }
 }
 function save(): void {
   if (storage && projectId)
@@ -132,23 +191,94 @@ function selectEntry(entry: ProjectEntry): void {
   setSearchOpen(false);
 }
 
+function savedPaths(saved: SavedSession): string[] {
+  return [
+    ...new Set(
+      saved.version === 1
+        ? saved.tabs
+        : saved.groups.flatMap((group) => group.tabs.map((tab) => tab.path)),
+    ),
+  ];
+}
+
+async function fetchSessionFiles(saved: SavedSession): Promise<ProjectFile[]> {
+  const batches: string[][] = [];
+  let batch: string[] = [];
+  let queryLength = 0;
+  for (const path of savedPaths(saved)) {
+    const length = new URLSearchParams({ path }).toString().length + 7;
+    if (length > 12_000) continue;
+    if (
+      batch.length === 32 ||
+      (batch.length > 0 && queryLength + length > 12_000)
+    ) {
+      batches.push(batch);
+      batch = [];
+      queryLength = 0;
+    }
+    batch.push(path);
+    queryLength += length;
+  }
+  if (batch.length) batches.push(batch);
+  const responses = await Promise.all(
+    batches.map(async (paths) => {
+      const query = new URLSearchParams();
+      for (const path of paths) query.append('path', path);
+      const response = await fetch(`/api/session-files?${query}`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return (await response.json()) as ProjectFile[];
+    }),
+  );
+  return responses.flat();
+}
+
 async function loadIndex(initial = false): Promise<void> {
   refresh.disabled = true;
   count.textContent = 'Loading files…';
   try {
-    const response = await fetch('/api/files');
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const data: FileIndex = await response.json();
-    projectId = data.project.id;
-    files = data.files;
-    index = new FuzzyIndex([...data.directories, ...files]);
-    byId('project-name').textContent = data.project.name;
-    byId('status-project').textContent = data.project.name;
     if (initial) {
+      const indexRequest: Promise<{ data: FileIndex } | { error: unknown }> =
+        fetch('/api/files').then(
+          async (response) =>
+            response.ok
+              ? { data: (await response.json()) as FileIndex }
+              : { error: new Error(`HTTP ${response.status}`) },
+          (error: unknown) => ({ error }),
+        );
+      const projectResponse = await fetch('/api/project');
+      if (!projectResponse.ok)
+        throw new Error(`HTTP ${projectResponse.status}`);
+      const project = (await projectResponse.json()) as ProjectInfo;
+      projectId = project.id;
+      byId('project-name').textContent = project.name;
+      byId('status-project').textContent = project.name;
       const saved = storage ? readSession(storage, projectId) : null;
-      workspace.restore(saved, files);
+      let restored = false;
+      if (saved) {
+        try {
+          workspace.restore(saved, await fetchSessionFiles(saved));
+          restored = true;
+        } catch {
+          // Fall back to the full index if the fast, validated lookup fails.
+        }
+      }
+      const result = await indexRequest;
+      if ('error' in result) throw result.error;
+      const data = result.data;
+      if (saved && !restored) workspace.restore(saved, data.files);
+      files = data.files;
+      index = new FuzzyIndex([...data.directories, ...files]);
+      renderResults();
     } else {
-      const available = new Set(files.map((file) => file.path));
+      const response = await fetch('/api/files');
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = (await response.json()) as FileIndex;
+      projectId = data.project.id;
+      const available = new Set(data.files.map((file) => file.path));
+      files = data.files;
+      index = new FuzzyIndex([...data.directories, ...files]);
+      byId('project-name').textContent = data.project.name;
+      byId('status-project').textContent = data.project.name;
       for (const tab of workspace.tabs)
         if (!available.has(tab.file.path)) workspace.close(tab);
       renderResults();
@@ -225,6 +355,7 @@ refresh.addEventListener('click', () => {
 });
 window.addEventListener('keydown', (event) => {
   if (event.defaultPrevented || event.isComposing) return;
+  if (document.querySelector('dialog[open]')) return;
   const focused = document.activeElement;
   const typing =
     focused instanceof HTMLElement &&
@@ -284,6 +415,15 @@ window.addEventListener('keydown', (event) => {
 });
 const navigation = installNavigation({
   onSearch: focusSearch,
+  onScroll: (key) => {
+    const active = workspace.activeTab;
+    if (!active || active.file.kind !== 'html' || active.mode !== 'viewer')
+      return false;
+    const frame = active.pane.element.querySelector('iframe');
+    if (!frame?.contentWindow) return false;
+    frame.contentWindow.postMessage({ type: 'fzv:scroll', key }, '*');
+    return true;
+  },
   onHintActivate: (target) => {
     if (
       !(target instanceof HTMLIFrameElement) ||
@@ -309,17 +449,22 @@ const navigation = installNavigation({
     );
   },
 });
-const workspace = new Workspace(byId('preview'), () => {
-  navigation.cancel();
-  const active = workspace.activeTab;
-  document.title = active
-    ? `${active.file.name} — ${PRODUCT_NAME}`
-    : PRODUCT_NAME;
-  const count = workspace.tabs.length;
-  byId('tab-count').textContent = `${count} open tab${count === 1 ? '' : 's'}`;
-  renderResults();
-  save();
-});
+const workspace = new Workspace(
+  byId('preview'),
+  () => {
+    navigation.cancel();
+    const active = workspace.activeTab;
+    document.title = active
+      ? `${active.file.name} — ${PRODUCT_NAME}`
+      : PRODUCT_NAME;
+    const count = workspace.tabs.length;
+    byId('tab-count').textContent =
+      `${count} open tab${count === 1 ? '' : 's'}`;
+    renderResults();
+    save();
+  },
+  (text, label) => void copyToClipboard(text, label),
+);
 window.addEventListener('message', (event) => {
   if (event.origin !== 'null') return;
   const tab = workspace.frameTab(event.source);

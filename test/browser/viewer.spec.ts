@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
 import { once } from 'node:events';
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 // @ts-expect-error Fixtures and compiled server are plain JavaScript, used only by tests.
 import { createFixture } from '../fixtures.mjs';
@@ -95,6 +95,131 @@ test('treats shortcut letters as text while searching and restores focus after o
   await expect(
     page.getByRole('tab', { name: 'docs/hello world 日本語.txt' }),
   ).toBeFocused();
+});
+
+test('copies a file path and the complete source text', async ({ page }) => {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await openFile(page, 'docs/sample.ts');
+  const pathLabel = page.locator('#current-path');
+  const pathBounds = await pathLabel.boundingBox();
+  const copyPath = page.getByRole('button', { name: 'Copy file path' });
+  const copyBounds = await copyPath.boundingBox();
+  expect(pathBounds).not.toBeNull();
+  expect(copyBounds).not.toBeNull();
+  expect(copyBounds!.x - (pathBounds!.x + pathBounds!.width)).toBeLessThan(12);
+  await copyPath.click();
+  await expect(page.locator('#notification')).toHaveText(
+    'File path copied to clipboard.',
+  );
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    'docs/sample.ts',
+  );
+  await page.evaluate(() => {
+    const writeText = navigator.clipboard.writeText.bind(navigator.clipboard);
+    Object.defineProperty(navigator.clipboard, 'writeText', {
+      configurable: true,
+      value: () => {
+        Object.defineProperty(navigator.clipboard, 'writeText', {
+          configurable: true,
+          value: writeText,
+        });
+        return Promise.reject(new Error('Clipboard API denied'));
+      },
+    });
+  });
+  await copyPath.click();
+  await expect(page.locator('#notification')).toHaveText(
+    'File path copied to clipboard.',
+  );
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    'docs/sample.ts',
+  );
+
+  const source =
+    'export const message: string = "<script>unsafe</script>";\r\n' +
+    '// 日本語のコメント\r\n' +
+    'console.log(message);\r\n';
+  const copySource = page.getByRole('button', { name: 'Copy source code' });
+  await expect(copySource).toBeVisible();
+  await copySource.click();
+  await expect(page.locator('#notification')).toHaveText(
+    'Source copied to clipboard.',
+  );
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    source,
+  );
+});
+
+test('shows keyboard help and supports Vim scrolling and search inside HTML previews', async ({
+  page,
+}) => {
+  await openFile(page, 'README.md');
+  await page.keyboard.press('Shift+Slash');
+  const help = page.getByRole('dialog', { name: 'Keyboard shortcuts' });
+  await expect(help).toBeVisible();
+  await expect(help).toContainText('Scroll to the top');
+  await expect(help).toContainText('Focus an editor group');
+  await page.keyboard.press('Escape');
+  await expect(help).toBeHidden();
+
+  await openFile(page, 'docs/navigation.html');
+  const frame = page.frameLocator('iframe[title="docs/navigation.html"]');
+  await frame.locator('body').click({ position: { x: 100, y: 100 } });
+  await page.keyboard.press('j');
+  await expect
+    .poll(() =>
+      frame
+        .locator('html')
+        .evaluate(() => document.scrollingElement?.scrollTop ?? 0),
+    )
+    .toBeGreaterThan(0);
+  await page.keyboard.press('Shift+Slash');
+  const frameHelp = frame.getByRole('dialog', {
+    name: 'Keyboard shortcuts',
+  });
+  await expect(frameHelp).toBeVisible();
+  await expect(frameHelp).not.toContainText('Focus an editor group');
+  await page.keyboard.press('Escape');
+  await expect(frameHelp).toBeHidden();
+  await page.keyboard.press('/');
+  await expect(page.getByRole('dialog', { name: 'Find a file' })).toBeVisible();
+});
+
+test('restores saved tabs before the full file index finishes loading', async ({
+  page,
+}) => {
+  await openFile(page, 'README.md');
+  await openFile(page, 'docs/sample.ts');
+
+  let releaseIndex!: () => void;
+  const indexGate = new Promise<void>((resolve) => {
+    releaseIndex = resolve;
+  });
+  let markRequestStarted!: () => void;
+  const requestStarted = new Promise<void>((resolve) => {
+    markRequestStarted = resolve;
+  });
+  let markRequestContinued!: () => void;
+  const requestContinued = new Promise<void>((resolve) => {
+    markRequestContinued = resolve;
+  });
+  await page.route('**/api/files', async (route) => {
+    markRequestStarted();
+    await indexGate;
+    await route.continue();
+    markRequestContinued();
+  });
+  try {
+    await page.reload();
+    await requestStarted;
+    await expect(page.getByRole('tab')).toHaveCount(2);
+  } finally {
+    releaseIndex();
+  }
+  await requestContinued;
+  await page.unroute('**/api/files');
+  await expect(page.getByRole('tab')).toHaveCount(2);
+  await expect(page.locator('#status-project')).toHaveText('project');
 });
 
 async function openFile(page: Page, file: string): Promise<void> {
@@ -1460,6 +1585,11 @@ test('can jump between HTML and editor groups with f while preserving local HTML
   ).toBeHidden();
   await activate.focus();
   await page.keyboard.press('f');
+  const singleGroupFrameHint = page.locator(
+    '.vim-hint[data-hint-target="IFRAME"]',
+  );
+  await expect(singleGroupFrameHint).toBeVisible();
+  await page.keyboard.type((await singleGroupFrameHint.textContent())!.toLowerCase());
   await expect(localHint).toBeVisible();
   await expect(page.locator('.vim-hint')).toHaveCount(0);
 });
@@ -1657,8 +1787,34 @@ test('supports hints, scrolling and slash search inside sandboxed HTML without i
   await openFile(page, 'docs/navigation.html');
   const frame = page.frameLocator('iframe[title="docs/navigation.html"]');
   const button = frame.getByRole('button', { name: 'Activate', exact: true });
+  await expect(
+    page.getByRole('tab', { name: 'docs/navigation.html', exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press('j');
+  await expect
+    .poll(() => frame.locator('html').evaluate((el) => el.scrollTop))
+    .toBe(64);
   await button.focus();
   await page.keyboard.press('f');
+  const downloadHint = page.locator(
+    '.vim-hint[data-hint-target="download-file"]',
+  );
+  await expect(downloadHint).toBeVisible();
+  const downloadPromise = page.waitForEvent('download');
+  await page.keyboard.type((await downloadHint.textContent())!.toLowerCase());
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe('navigation.html');
+  expect(await readFile(await download.path(), 'utf8')).toBe(
+    '<!doctype html><html><body style="margin:0"><button id="activate" onclick="document.body.dataset.clicked=\'yes\'">Activate</button><input id="entry" aria-label="Text input"><div contenteditable="true" id="editable" aria-label="Editable text">Edit here</div><div style="height:2400px;width:1800px">Long and wide page</div></body></html>',
+  );
+
+  await button.focus();
+  await page.keyboard.press('f');
+  const frameHint = page.locator(
+    '.vim-hint[data-hint-target="IFRAME"]',
+  );
+  await expect(frameHint).toBeVisible();
+  await page.keyboard.type((await frameHint.textContent())!.toLowerCase());
   const hint = frame.locator('.vim-hint[data-hint-target="activate"]');
   await expect(hint).toBeVisible();
   await page.keyboard.type((await hint.textContent())!.toLowerCase());

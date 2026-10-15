@@ -33,15 +33,28 @@
   height: 100%;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   align-items: start;
   overflow: auto;
+  background: var(--vscode-editor-background);
+}
+.source-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  min-height: 34px;
+  padding: 2px 12px;
+  border-bottom: 1px solid var(--line);
   background: var(--vscode-editor-background);
 }
 .line-numbers,
 .source-text {
   font: 13px/20px var(--mono);
   margin: 0;
-  min-height: 100%;
+  min-height: calc(100% - 34px);
   padding: 12px 16px;
 }
 .syntax-token {

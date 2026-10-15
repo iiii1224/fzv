@@ -1,5 +1,6 @@
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
+import { icon } from './icons.js';
 
 // Local resources use the same validated route as HTML preview assets.
 function resourceUrl(value: string, path: string): string | null {
@@ -51,9 +52,20 @@ export function sourceView(
   content: string,
   filename: string,
   signal: AbortSignal,
+  copySource: (content: string) => void,
 ): HTMLElement {
   const wrapper = document.createElement('div');
   wrapper.className = 'source-preview';
+  const toolbar = document.createElement('div');
+  toolbar.className = 'source-toolbar';
+  const copy = document.createElement('button');
+  copy.type = 'button';
+  copy.className = 'toolbar-button';
+  copy.setAttribute('aria-label', 'Copy source code');
+  copy.title = 'Copy source code';
+  copy.append(icon('copy'), document.createTextNode('Copy source code'));
+  copy.addEventListener('click', () => copySource(content), { signal });
+  toolbar.append(copy);
   const numbers = document.createElement('pre');
   numbers.className = 'line-numbers';
   numbers.setAttribute('aria-hidden', 'true');
@@ -64,7 +76,7 @@ export function sourceView(
   const text = document.createElement('pre');
   text.className = 'text-preview source-text';
   text.textContent = content;
-  wrapper.append(numbers, text);
+  wrapper.append(toolbar, numbers, text);
   void import('./highlight.js')
     .then(({ highlightSource }) =>
       highlightSource(text, content, filename, signal),

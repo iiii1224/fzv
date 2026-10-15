@@ -251,4 +251,28 @@ export class Catalog {
       directories: directories.sort((a, b) => a.path.localeCompare(b.path)),
     };
   }
+
+  async filesForPaths(paths: string[]): Promise<ProjectFile[]> {
+    const unique = [...new Set(paths)];
+    const files = await Promise.all(
+      unique.map(async (relative) => {
+        try {
+          const file = await this.openFile(relative);
+          try {
+            return {
+              path: relative,
+              name: path.posix.basename(relative),
+              kind: file.kind!,
+              size: file.size,
+            } satisfies ProjectFile;
+          } finally {
+            await file.handle.close();
+          }
+        } catch {
+          return null;
+        }
+      }),
+    );
+    return files.filter((file): file is ProjectFile => file !== null);
+  }
 }

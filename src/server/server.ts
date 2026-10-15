@@ -64,7 +64,7 @@ export function renderHtml(source: string, relative: string): string {
   // The same self-contained keyboard handler runs inside the opaque sandbox.
   // Only fixed shortcut and focus messages cross to the parent; it validates the sender.
   const navigation = `<script>(${installNavigation.toString()})({
-    bridgeEditorGroups: true,
+    bridgeWorkspace: true,
     onSearch: () => { if (parent !== window) parent.postMessage({type: 'fzv:shortcut', key: '/'}, '*'); },
     onReload: () => { if (parent !== window) parent.postMessage({type: 'fzv:shortcut', key: 'r'}, '*'); },
     onFocus: () => { if (parent !== window) parent.postMessage({type: 'fzv:focus'}, '*'); }
@@ -185,15 +185,26 @@ export async function createViewer(options: ViewerOptions) {
         return;
       }
       const url = new URL(req.url, origin);
-      if (url.pathname === '/api/project' || url.pathname === '/api/files') {
+      if (
+        url.pathname === '/api/project' ||
+        url.pathname === '/api/files' ||
+        url.pathname === '/api/session-files'
+      ) {
         if (req.headers.origin && req.headers.origin !== origin.origin) {
           reply(req, res, 403, 'text/plain', 'Origin not allowed\n');
+          return;
+        }
+        const paths = url.searchParams.getAll('path');
+        if (url.pathname === '/api/session-files' && paths.length > 32) {
+          reply(req, res, 400, 'text/plain', 'Too many file paths\n');
           return;
         }
         const body =
           url.pathname === '/api/project'
             ? catalog.project
-            : { project: catalog.project, ...(await catalog.list()) };
+            : url.pathname === '/api/session-files'
+              ? await catalog.filesForPaths(paths)
+              : { project: catalog.project, ...(await catalog.list()) };
         reply(
           req,
           res,

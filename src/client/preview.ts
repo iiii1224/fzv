@@ -40,6 +40,7 @@ export function createPreview(
   file: ProjectFile,
   revision = 0,
   mode: PreviewMode = defaultPreviewMode(file),
+  copySource: (content: string) => void = () => {},
 ): PreviewPane {
   const element = document.createElement('section');
   element.className = 'preview-pane';
@@ -68,7 +69,9 @@ export function createPreview(
     const renderText = () => {
       if (content === undefined || signal.aborted) return;
       if (currentMode === 'source' && !sourceRendered) {
-        source.replaceChildren(sourceView(content, file.name, signal));
+        source.replaceChildren(
+          sourceView(content, file.name, signal, copySource),
+        );
         sourceRendered = true;
       }
       if (currentMode === 'viewer' && file.kind === 'text' && !viewerRendered) {

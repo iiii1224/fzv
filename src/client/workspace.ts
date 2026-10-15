@@ -72,6 +72,7 @@ export class Workspace {
   constructor(
     private host: HTMLElement,
     private onChange: () => void,
+    private copyToClipboard: (text: string, label: string) => void,
   ) {
     this.selectedGroup = this.makeGroup();
     this.tree = { type: 'group', id: this.selectedGroup.id };
@@ -166,6 +167,10 @@ export class Workspace {
     control('reload-file').addEventListener('click', () =>
       this.reload(group.active),
     );
+    control('copy-path').addEventListener('click', () => {
+      const path = group.active?.file.path;
+      if (path) this.copyToClipboard(path, 'File path');
+    });
     control('viewer-mode').addEventListener('click', () =>
       this.setMode(group.active, 'viewer'),
     );
@@ -205,16 +210,7 @@ export class Workspace {
       capture: true,
     });
     pane.addEventListener('focusin', () => this.selectGroup(tab.group));
-    const frame = pane.querySelector('iframe');
-    frame?.addEventListener('load', () => this.syncFrameHints(frame));
     this.host.append(pane);
-  }
-
-  private syncFrameHints(frame: HTMLIFrameElement): void {
-    frame.contentWindow?.postMessage(
-      { type: 'fzv:groups', multiple: this.groups.size > 1 },
-      '*',
-    );
   }
 
   private makeTab(
@@ -245,7 +241,9 @@ export class Workspace {
       mode,
       element,
       button,
-      pane: createPreview(file, 0, mode),
+      pane: createPreview(file, 0, mode, (content) =>
+        this.copyToClipboard(content, 'Source'),
+      ),
       revision: 0,
     };
     button.addEventListener('click', () => this.activate(tab));
@@ -425,7 +423,9 @@ export class Workspace {
     if (!tab) return;
     tab.pane.dispose();
     tab.revision = ++this.revision;
-    tab.pane = createPreview(tab.file, tab.revision, tab.mode);
+    tab.pane = createPreview(tab.file, tab.revision, tab.mode, (content) =>
+      this.copyToClipboard(content, 'Source'),
+    );
     this.mountPane(tab);
     this.render();
   }
@@ -548,12 +548,19 @@ export class Workspace {
       for (const name of ['reload-file', 'split-right', 'split-down'])
         group.control<HTMLButtonElement>(name).disabled =
           !active || (name.startsWith('split-') && this.groups.size >= 32);
+      group.control<HTMLButtonElement>('copy-path').disabled = !active;
       group.control('open-file').hidden = !active;
+      group.control('download-file').hidden = !active;
       if (active)
         group.control<HTMLAnchorElement>('open-file').href = fileUrl(
           active.file,
           active.revision,
         );
+      if (active) {
+        const download = group.control<HTMLAnchorElement>('download-file');
+        download.href = fileUrl(active.file, active.revision, true);
+        download.download = active.file.name;
+      }
       group.control('preview-modes').hidden =
         !active || !hasViewer(active.file);
       group
@@ -573,8 +580,6 @@ export class Workspace {
         tab.pane.element.hidden = !selected;
         tab.pane.element.dataset.groupId = group.id;
         tab.pane.setActive(selected && group === this.selectedGroup);
-        const frame = tab.pane.element.querySelector('iframe');
-        if (frame) this.syncFrameHints(frame);
       });
     }
     this.layout();
