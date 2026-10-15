@@ -47,6 +47,13 @@ test(
         'dompurify-APACHE-2.0.txt',
         'vscode-MIT.txt',
         'shiki/shiki-LICENSE',
+        'pdfjs/Apache-2.0.txt',
+        'pdfjs/cmaps-LICENSE',
+        'pdfjs/LICENSE_FOXIT',
+        'pdfjs/LICENSE_LIBERATION',
+        'pdfjs/LICENSE_OPENJPEG',
+        'pdfjs/LICENSE_JBIG2',
+        'pdfjs/LICENSE_QCMS',
       ])
         assert.ok(
           packed.files.some((file) => file.path === `licenses/${license}`),
@@ -174,6 +181,23 @@ test(
             .status,
           200,
         );
+      for (const [asset, type] of [
+        ['build/pdf.worker.mjs', /^text\/javascript/],
+        ['cmaps/Adobe-Japan1-UCS2.bcmap', /^application\/octet-stream/],
+        ['standard_fonts/LiberationSans-Regular.ttf', /^font\/ttf/],
+        ['wasm/openjpeg.wasm', /^application\/wasm/],
+        ['wasm/jbig2.wasm', /^application\/wasm/],
+        ['wasm/qcms_bg.wasm', /^application\/wasm/],
+        ['iccs/CGATS001Compat-v2-micro.icc', /^application\/octet-stream/],
+      ]) {
+        const resource = `pdfjs/${asset}`;
+        assert.ok(
+          packed.files.some((file) => file.path === `dist/client/${resource}`),
+        );
+        const response = await fetch(new URL(resource, origin));
+        assert.equal(response.status, 200, resource);
+        assert.match(response.headers.get('content-type'), type);
+      }
       const index = await (await fetch(new URL('/api/files', origin))).json();
       assert.equal(index.project.name, 'project');
       assert.ok(index.files.some((file) => file.path === 'README.md'));

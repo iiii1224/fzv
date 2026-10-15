@@ -446,7 +446,7 @@ const navigation = installNavigation({
     return (
       [
         ...(active?.pane.element.querySelectorAll<HTMLElement>(
-          '.source-preview, .viewer-surface',
+          '.source-preview, .viewer-surface, .pdf-scroll',
         ) ?? []),
       ].find((element) => element.getClientRects().length > 0) ?? null
     );

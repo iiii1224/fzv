@@ -1,0 +1,75 @@
+.pdf-toolbar {
+  position: relative;
+  z-index: 1;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--line);
+  background: var(--vscode-editor-background);
+  color: var(--vscode-foreground);
+}
+.pdf-toolbar button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 3px 7px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.pdf-toolbar button:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+.pdf-zoom,
+.pdf-status,
+.pdf-matches {
+  white-space: nowrap;
+  font-size: 11px;
+}
+.pdf-zoom {
+  min-width: 38px;
+  text-align: center;
+}
+.pdf-status {
+  margin: 0 8px;
+}
+.pdf-toolbar input {
+  width: 140px;
+  min-width: 50px;
+  border: 1px solid var(--line);
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  padding: 4px 6px;
+}
+.pdf-scroll {
+  position: absolute;
+  inset: 40px 0 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: var(--vscode-editorGroupHeader-tabsBackground);
+  color-scheme: light;
+}
+.pdf-scroll .pdfViewer {
+  --page-bg-color: white;
+}
+.pdf-scroll .pdfViewer .page {
+  box-sizing: content-box;
+}
+@media (max-width: 560px) {
+  .pdf-toolbar {
+    gap: 0;
+  }
+  .pdf-toolbar input {
+    flex: 1;
+    width: 50px;
+  }
+  .pdf-status {
+    margin: 0 3px;
+  }
+  .pdf-matches {
+    max-width: 55px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}

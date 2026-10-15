@@ -133,21 +133,14 @@ export function createPreview(
     }
     setMode(mode);
   } else if (file.kind === 'pdf') {
-    const frame = document.createElement('iframe');
-    frame.title = file.path;
-    frame.src = url;
-    element.append(frame);
-    // Verify availability separately: browser PDF plugins do not report useful iframe errors.
-    void fetch(url, { method: 'HEAD', signal })
-      .then((response) => {
-        if (!response.ok)
-          errorMessage(
-            element,
-            `Could not load ${file.path} (HTTP ${response.status}).`,
-          );
+    element.textContent = 'Loading…';
+    void import('./pdf.js')
+      .then(({ mountPdf }) => {
+        if (!signal.aborted) return mountPdf(element, url, signal);
       })
       .catch((error) => {
-        if (!signal.aborted) errorMessage(element, String(error));
+        if (!signal.aborted)
+          errorMessage(element, `Could not load ${file.path}: ${error}`);
       });
   } else if (file.kind === 'image') {
     const stage = document.createElement('div');

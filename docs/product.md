@@ -16,7 +16,7 @@
 
 Node.js 24+, TypeScript strict mode, the Node HTTP/filesystem/CLI APIs, Vanilla TypeScript, CSS, and Vite. Server code is compiled with tsc. Client assets are built before publication. There are no production npm dependencies.
 
-The existing viewer's search scoring is ported with attribution. Browser-native PDF rendering avoids shipping a PDF engine in the initial release. UI components keep separate responsibilities for search, session serialization, preview lifecycle, and workspace interactions.
+The existing viewer's search scoring is ported with attribution. PDF.js Viewer components render PDFs in the application's own scroll container, sharing Vim navigation with the other previews. PDF.js is loaded on the first PDF preview; text selection, links, width fitting, zoom and document search are supported. UI components keep separate responsibilities for search, session serialization, preview lifecycle, and workspace interactions.
 
 VS Code Codicons, Marked, DOMPurify, and Shiki are development dependencies bundled into the client at build time. Icons, fonts, TextMate grammars, and the VS Code Light+/Dark+ syntax themes are served locally. Shiki uses its JavaScript regex engine and creates text nodes with token colors; it does not inject source as HTML or loosen the app CSP. Unknown formats and sources over 512 Ki characters remain plain text to keep the UI responsive. Source line endings are preserved.
 
@@ -24,16 +24,18 @@ Tabs use a scoped subset of VS Code's tab CSS. The search popup uses its Quick I
 
 Marked output is sanitized before insertion; local Markdown image and link paths use the existing validated asset route. External Markdown images remain blocked by the app CSP.
 
+PDF.js is a pinned development dependency, bundled into the client. Its worker, CMaps, standard fonts, image/color decoders and ICC profile are included in the built package and served locally. Only the UI policy permits WebAssembly compilation and same-origin workers; JavaScript eval and inline scripts remain blocked. The HTML preview policy is unchanged. PDF scripts, interactive forms, annotation editing and XFA are disabled. External PDF links open separately with `noopener noreferrer`; encrypted documents use the existing Open separately fallback. Closing or reloading a PDF aborts its requests and destroys its worker and observers.
+
 ## Boundaries
 
 All project file and HTML resource requests pass through the same catalog validation. Both lexical and resolved paths must be visible and inside the root. The open descriptor is checked against the resolved file. Directory symlinks are not followed; visible in-root file aliases are allowed only when their preview kind agrees with their target. Files over 20 MiB are not served.
 
 HTML and SVG responses use sandbox/CSP. HTML may run inline scripts but cannot access the parent application's origin or storage. External resources allowed by the existing preview policy can still make requests. The app's own assets are bundled locally.
 
-HTML rendering injects the same self-contained navigation handler used by the main application. Hints and scrolling operate inside the sandbox; only `/` and `r` shortcut messages cross to the parent. The parent accepts these messages only from the active HTML viewer's opaque frame. The bridge does not expose project data or storage. Browser-native PDF viewers handle focused keyboard input themselves.
+HTML rendering injects the same self-contained navigation handler used by the main application. Hints and scrolling operate inside the sandbox; only `/` and `r` shortcut messages cross to the parent. The parent accepts these messages only from the active HTML viewer's opaque frame. The bridge does not expose project data or storage. PDF rendering runs in the main application's DOM, so its focused keyboard events use the existing navigation handler directly. PDF bytes are fetched through the same validated file route as other project files.
 
 The HTTP server defaults to loopback, checks request Host names against the bound/local addresses, rejects cross-origin API requests, and supports GET/HEAD only. LAN access is opt-in and unauthenticated.
 
 ## Deferred
 
-Editing, IDE integration, content search, file watching, gitignore interpretation, plugins, PDF.js, and server-side state storage are outside the initial scope. Search can move into a Web Worker if measurements show that scoring interrupts input.
+Editing, IDE integration, project-wide content search, file watching, gitignore interpretation, plugins, and server-side state storage are outside the initial scope. Search can move into a Web Worker if measurements show that scoring interrupts input.

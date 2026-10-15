@@ -475,7 +475,7 @@ test('requests PDFs and supports search toggling and refreshing added files', as
   );
   await openFile(page, 'docs/example.pdf');
   expect((await request).status()).toBe(200);
-  await expect(page.locator('iframe[title="docs/example.pdf"]')).toBeVisible();
+  await expect(page.locator('.pdf-scroll .page canvas').first()).toBeVisible();
   await expect(page.getByRole('searchbox')).toBeHidden();
   await page.getByRole('tab', { name: 'docs/example.pdf' }).focus();
   await page.keyboard.press('/');
@@ -486,6 +486,236 @@ test('requests PDFs and supports search toggling and refreshing added files', as
     page.getByRole('button', { name: 'new-note.md', exact: true }),
   ).toBeVisible();
 });
+
+test('renders PDFs locally with text, links, Vim scrolling, zoom and document search', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  const requests: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  page.on('console', (message) => {
+    if (message.type() === 'error') errors.push(message.text());
+  });
+  page.on('request', (request) => requests.push(request.url()));
+  await openFile(page, 'README.md');
+  expect(requests.some((url) => /\/pdfjs\/|\/assets\/pdf-/.test(url))).toBe(
+    false,
+  );
+  await openFile(page, 'docs/example.pdf');
+  const scroller = page.locator('.pdf-scroll');
+  await expect(page.locator('.pdf-status')).toHaveText('1 / 3');
+  await expect(scroller.locator('.textLayer').first()).toContainText(
+    'fzv preview page 1',
+  );
+  const canvas = scroller.locator('canvas').first();
+  await expect(canvas).toBeVisible();
+  expect(
+    await canvas.evaluate((el) => {
+      const data = el
+        .getContext('2d')!
+        .getImageData(0, 0, el.width, el.height).data;
+      return data.some((value, index) => index % 4 !== 3 && value < 200);
+    }),
+  ).toBe(true);
+  const link = scroller.locator('.annotationLayer a').first();
+  await expect(link).toHaveAttribute('href', 'https://example.com/');
+  await expect(link).toHaveAttribute('target', '_blank');
+  await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  expect(page.workers()).toHaveLength(1);
+  expect(
+    requests.some((url) => url.includes('/pdfjs/build/pdf.worker.mjs')),
+  ).toBe(true);
+  expect(requests.some((url) => url.includes('/pdfjs/standard_fonts/'))).toBe(
+    true,
+  );
+  const toolbar = await page.locator('.preview-toolbar').boundingBox();
+  await scroller.click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press('j');
+  await expect.poll(() => scroller.evaluate((el) => el.scrollTop)).toBe(64);
+  await page.keyboard.press('k');
+  await expect.poll(() => scroller.evaluate((el) => el.scrollTop)).toBe(0);
+  await page.getByRole('button', { name: 'Zoom in PDF', exact: true }).click();
+  await page.keyboard.press('l');
+  await expect.poll(() => scroller.evaluate((el) => el.scrollLeft)).toBe(64);
+  await page.keyboard.press('h');
+  await expect.poll(() => scroller.evaluate((el) => el.scrollLeft)).toBe(0);
+  await page.keyboard.press('G');
+  await expect
+    .poll(() =>
+      scroller.evaluate((el) =>
+        Math.abs(el.scrollHeight - el.clientHeight - el.scrollTop),
+      ),
+    )
+    .toBeLessThanOrEqual(1);
+  await expect(
+    scroller.locator('.page[data-page-number="3"] canvas'),
+  ).toBeVisible();
+  await page.keyboard.press('g');
+  await page.keyboard.press('g');
+  await expect.poll(() => scroller.evaluate((el) => el.scrollTop)).toBe(0);
+  expect(await page.locator('.preview-toolbar').boundingBox()).toEqual(toolbar);
+  await page.getByRole('button', { name: 'Fit PDF to width' }).click();
+  await expect
+    .poll(() => scroller.evaluate((el) => el.scrollWidth - el.clientWidth))
+    .toBeLessThanOrEqual(1);
+  await page.keyboard.press('f');
+  const hintTarget = await link.evaluate(
+    (el) =>
+      el.id ||
+      el.getAttribute('aria-label') ||
+      el.textContent?.trim() ||
+      el.tagName,
+  );
+  await expect(
+    page.locator(`.vim-hint[data-hint-target=${JSON.stringify(hintTarget)}]`),
+  ).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Control+f');
+  const find = page.getByRole('textbox', { name: 'Find in PDF' });
+  await expect(find).toBeFocused();
+  await find.fill('page 3');
+  await expect(page.locator('.pdf-matches')).toHaveText('1 / 1');
+  await expect(
+    scroller.locator('.page[data-page-number="3"] .highlight.selected'),
+  ).toBeVisible();
+  await find.fill('hjklGggf/r');
+  await expect(find).toHaveValue('hjklGggf/r');
+  await expect(page.locator('.pdf-matches')).toHaveText('No matches');
+  await find.press('Escape');
+  await expect(scroller).toBeFocused();
+  await page.keyboard.press('/');
+  await expect(page.getByRole('searchbox')).toBeFocused();
+  expect(requests.every((url) => url.startsWith(origin + '/'))).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+test('zooms only the PDF with Ctrl+wheel and scrolls normally without Ctrl', async ({
+  page,
+}) => {
+  await openFile(page, 'docs/example.pdf');
+  const scroller = page.locator('.pdf-scroll');
+  const firstPage = scroller.locator('.page').first();
+  await expect(firstPage.locator('canvas')).toBeVisible();
+  const zoom = () => page.locator('.pdf-zoom').innerText().then(parseFloat);
+  const initialZoom = await zoom();
+  const initialWidth = await firstPage.evaluate((el) => el.clientWidth);
+  const toolbar = await page.locator('.preview-toolbar').boundingBox();
+  const browserSize = () =>
+    page.evaluate(() => ({
+      width: innerWidth,
+      height: innerHeight,
+      pixelRatio: devicePixelRatio,
+      scale: visualViewport?.scale,
+    }));
+  const initialBrowserSize = await browserSize();
+  const box = await scroller.boundingBox();
+  if (!box) throw new Error('PDF scroll area is missing');
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.wheel(0, 200);
+  await expect
+    .poll(() => scroller.evaluate((el) => el.scrollTop))
+    .toBeGreaterThan(0);
+  expect(await zoom()).toBe(initialZoom);
+  const cancelled = page.evaluate(
+    () =>
+      new Promise<boolean>((resolve) => {
+        window.addEventListener(
+          'wheel',
+          (event) => resolve(event.defaultPrevented),
+          { once: true },
+        );
+      }),
+  );
+  await page.keyboard.down('Control');
+  try {
+    await page.mouse.wheel(0, -100);
+    expect(await cancelled).toBe(true);
+    await expect.poll(zoom).toBeGreaterThan(initialZoom);
+    await expect
+      .poll(() => firstPage.evaluate((el) => el.clientWidth))
+      .toBeGreaterThan(initialWidth);
+    const enlargedZoom = await zoom();
+    await page.mouse.wheel(0, 100);
+    await expect.poll(zoom).toBeLessThan(enlargedZoom);
+  } finally {
+    await page.keyboard.up('Control');
+  }
+  expect(await browserSize()).toEqual(initialBrowserSize);
+  expect(await page.locator('.preview-toolbar').boundingBox()).toEqual(toolbar);
+});
+
+test('retains PDF tabs, reloads documents and releases workers on close', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await openFile(page, 'docs/example.pdf');
+  const pdf = page.locator('.pdf-scroll');
+  await expect(pdf.locator('canvas').first()).toBeVisible();
+  await page.keyboard.press('j');
+  await expect.poll(() => pdf.evaluate((el) => el.scrollTop)).toBe(64);
+  await openFile(page, 'README.md');
+  await page.getByRole('tab', { name: 'docs/example.pdf' }).click();
+  await expect.poll(() => pdf.evaluate((el) => el.scrollTop)).toBe(64);
+  await page.keyboard.press('r');
+  await expect(pdf.locator('canvas').first()).toBeVisible();
+  await expect.poll(() => pdf.evaluate((el) => el.scrollTop)).toBe(0);
+  await expect.poll(() => page.workers().length).toBe(1);
+  await page.getByRole('tab', { name: 'README.md', exact: true }).click();
+  await page.reload();
+  await expect(page.locator('.markdown-preview')).toBeVisible();
+  await page.getByRole('tab', { name: 'docs/example.pdf' }).click();
+  await expect(pdf.locator('canvas').first()).toBeVisible();
+  await expect
+    .poll(() => pdf.evaluate((el) => el.scrollWidth - el.clientWidth))
+    .toBeLessThanOrEqual(1);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect
+    .poll(() => pdf.evaluate((el) => el.scrollWidth - el.clientWidth))
+    .toBeLessThanOrEqual(1);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page
+    .getByRole('button', { name: 'Close docs/example.pdf', exact: true })
+    .click();
+  await expect(pdf).toHaveCount(0);
+  await expect.poll(() => page.workers().length).toBe(0);
+  expect(errors).toEqual([]);
+});
+
+test('reports PDF load errors and can reload or close during loading', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  const pattern = '**/file?path=docs%2Fexample.pdf&*';
+  await page.route(pattern, (route) =>
+    route.fulfill({ contentType: 'application/pdf', body: 'not a PDF' }),
+  );
+  await openFile(page, 'docs/example.pdf');
+  await expect(page.locator('.preview-error')).toContainText(
+    'Could not load docs/example.pdf',
+  );
+  await expect(page.locator('#open-file')).toHaveAttribute(
+    'href',
+    /\/file\?path=docs%2Fexample.pdf/,
+  );
+  await expect.poll(() => page.workers().length).toBe(0);
+  await page.unroute(pattern);
+  await page.keyboard.press('r');
+  await expect(page.locator('.pdf-scroll canvas').first()).toBeVisible();
+  await page.keyboard.press('r');
+  await page.keyboard.press('r');
+  await page
+    .getByRole('button', { name: 'Close docs/example.pdf', exact: true })
+    .click();
+  await expect.poll(() => page.workers().length).toBe(0);
+  expect(errors).toEqual([]);
+});
+
 test('remains usable on a narrow viewport', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload();

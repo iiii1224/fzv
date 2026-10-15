@@ -2,6 +2,38 @@ import { mkdtemp, mkdir, writeFile, open, symlink, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
+// A real multi-page document exercises rendering, text, links and navigation.
+export function createPdf(pageCount = 1) {
+  const fontId = 3 + pageCount * 2;
+  const objects = [
+    '<</Type /Catalog /Pages 2 0 R>>',
+    `<</Type /Pages /Kids [${Array.from({ length: pageCount }, (_, i) => `${3 + i * 2} 0 R`).join(' ')}] /Count ${pageCount}>>`,
+  ];
+  for (let page = 0; page < pageCount; page++) {
+    const content = `BT /F1 22 Tf 30 700 Td (fzv preview page ${page + 1}) Tj ET\n`;
+    objects.push(
+      `<</Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources <</Font <</F1 ${fontId} 0 R>>>> /Contents ${4 + page * 2} 0 R /Annots [<</Type /Annot /Subtype /Link /Rect [30 650 230 680] /Border [0 0 1] /A <</S /URI /URI (https://example.com/)>>>>]>>`,
+      `<</Length ${Buffer.byteLength(content)}>>\nstream\n${content}endstream`,
+    );
+  }
+  objects.push('<</Type /Font /Subtype /Type1 /BaseFont /Helvetica>>');
+  let pdf = '%PDF-1.4\n';
+  const offsets = [];
+  for (const [index, object] of objects.entries()) {
+    offsets.push(Buffer.byteLength(pdf));
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  }
+  const xref = Buffer.byteLength(pdf);
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  pdf += offsets
+    .map((offset) => `${String(offset).padStart(10, '0')} 00000 n \n`)
+    .join('');
+  return (
+    pdf +
+    `trailer\n<</Size ${objects.length + 1} /Root 1 0 R>>\nstartxref\n${xref}\n%%EOF\n`
+  );
+}
+
 export async function createFixture() {
   const base = await mkdtemp(path.join(tmpdir(), 'fzv-test-'));
   const root = path.join(base, 'project');
@@ -15,18 +47,7 @@ export async function createFixture() {
   await mkdir(path.join(base, 'outside'), { recursive: true });
   const svg =
     '<svg xmlns="http://www.w3.org/2000/svg" width="480" height="280"><rect width="480" height="280" rx="20" fill="#e6d6c6"/><circle cx="240" cy="120" r="65" fill="#b65236"/><text x="240" y="228" text-anchor="middle" font-family="monospace" font-size="24" fill="#35322f">fzv preview</text></svg>';
-  const pdfBody =
-    '%PDF-1.4\n1 0 obj\n<</Type /Catalog /Pages 2 0 R>>\nendobj\n2 0 obj\n<</Type /Pages /Kids [3 0 R] /Count 1>>\nendobj\n3 0 obj\n<</Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Resources <</Font <</F1 4 0 R>>>> /Contents 5 0 R>>\nendobj\n4 0 obj\n<</Type /Font /Subtype /Type1 /BaseFont /Helvetica>>\nendobj\n5 0 obj\n<</Length 43>>\nstream\nBT /F1 22 Tf 30 100 Td (fzv preview) Tj ET\nendstream\nendobj\n';
-  const offsets = [0];
-  for (let i = 1; i <= 5; i++) offsets.push(pdfBody.indexOf(`${i} 0 obj`));
-  const pdf =
-    pdfBody +
-    'xref\n0 6\n0000000000 65535 f \n' +
-    offsets
-      .slice(1)
-      .map((offset) => String(offset).padStart(10, '0') + ' 00000 n \n')
-      .join('') +
-    `trailer\n<</Size 6 /Root 1 0 R>>\nstartxref\n${pdfBody.length}\n%%EOF\n`;
+  const pdf = createPdf(3);
   await Promise.all([
     writeFile(
       path.join(root, 'docs', 'navigation.html'),

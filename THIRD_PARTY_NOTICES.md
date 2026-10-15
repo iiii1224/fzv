@@ -83,3 +83,16 @@ Upstream: https://github.com/shikijs/shiki
 License: MIT. Original license and dependency license copies are included under
 `licenses/shiki/`. This includes Microsoft's vscode-textmate implementation,
 Oniguruma-to-ES and its regex dependencies, and the supporting utilities.
+
+## PDF.js
+
+PDF previews use Mozilla PDF.js 6.4.299 Viewer components and rendering engine,
+bundled into the browser client. The worker, CMaps, standard fonts, image/color
+decoders and ICC profile are served locally. No PDF scripting engine is included.
+Copyright Mozilla Foundation and individual contributors.
+
+Upstream: https://github.com/mozilla/pdf.js/tree/v6.4.299
+License: Apache-2.0. License copy: `licenses/pdfjs/Apache-2.0.txt`.
+Supporting resource licenses and notices are preserved in `licenses/pdfjs/`
+and alongside the corresponding resources under `dist/client/pdfjs/`:
+Adobe CMaps, Foxit and Liberation fonts, OpenJPEG, JBIG2, QCMS and the ICC profile.
