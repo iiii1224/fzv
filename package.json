@@ -1,6 +1,6 @@
 {
   "name": "@aaa_iii/fzv",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A local file viewer for agent-driven development. Fuzzy find, open, and preview project files without an IDE.",
   "type": "module",
   "bin": {
