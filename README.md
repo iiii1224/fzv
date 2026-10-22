@@ -11,16 +11,16 @@
 
 ## 使い始める
 
-[GitHub Releases](https://github.com/iiii1224/fzv/releases/latest) から `fzv-0.1.0.tgz` をダウンロードし、プロジェクトのディレクトリで実行します。
+npmレジストリから起動します。プロジェクトのディレクトリで実行してください。
 
 ```bash
-npx --yes --package ./fzv-0.1.0.tgz fzv --root .
+npx --yes @aaa_iii/fzv@latest --root .
 ```
 
 自動再読み込みを有効にするには `--watch` を付けます。
 
 ```bash
-npx --yes --package ./fzv-0.1.0.tgz fzv --root . --watch
+npx --yes @aaa_iii/fzv@latest --root . --watch
 ```
 
 ターミナルに表示されたURLをブラウザで開きます。既定では `http://127.0.0.1:8000/` で待ち受けます。終了するには `Ctrl+C` を押します。
@@ -40,7 +40,7 @@ npx --yes --package ./fzv-0.1.0.tgz fzv --root . --watch
 別のプロジェクトやポートで起動する例:
 
 ```bash
-npx --yes --package ./fzv-0.1.0.tgz fzv --root ~/projects/example --port 8001 --watch
+npx --yes @aaa_iii/fzv@latest --root ~/projects/example --port 8001 --watch
 ```
 
 ## ファイルを探して読む
@@ -84,7 +84,7 @@ Markdownは整形表示とソース表示を切り替えられます。HTML、Ma
 サーバーは既定でこのマシンの `127.0.0.1` だけに接続を受け付けます。LANの別端末から開く場合は、たとえば次のように起動します。
 
 ```bash
-npx --yes --package ./fzv-0.1.0.tgz fzv --root . --host 0.0.0.0 --port 8001
+npx --yes @aaa_iii/fzv@latest --root . --host 0.0.0.0 --port 8001
 ```
 
 ネットワーク公開には認証もTLSもありません。接続できる端末からプロジェクト内の公開対象ファイルを閲覧できます。信頼できるネットワークでのみ使用してください。

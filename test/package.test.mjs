@@ -100,7 +100,7 @@ test(
         '--no-fund',
         archive,
       ]);
-      const packageRoot = path.join(install, 'node_modules', 'fzv');
+      const packageRoot = path.join(install, 'node_modules', '@aaa_iii', 'fzv');
       const metadata = JSON.parse(
         await readFile(path.join(packageRoot, 'package.json'), 'utf8'),
       );
