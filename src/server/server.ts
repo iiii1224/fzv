@@ -14,6 +14,7 @@ import {
 } from './catalog.js';
 import type { OpenProjectFile } from './catalog.js';
 import { installNavigation } from '../navigation.js';
+import type { ProjectChange } from '../shared.js';
 
 const UI_ROOT = fileURLToPath(new URL('../client/', import.meta.url));
 const UI_CSP =
@@ -190,6 +191,8 @@ export async function createViewer(options: ViewerOptions) {
   const previewCsp = allowHtmlNetwork ? NETWORK_PREVIEW_CSP : PREVIEW_CSP;
   const eventClients = new Set<ServerResponse>();
   let reloadTimer: NodeJS.Timeout | undefined;
+  // Unknown or excessive changes are sent as null so clients refresh every tab.
+  let changedPaths: Set<string> | null = new Set();
   const watcher = watchEnabled
     ? watchFiles(
         catalog.root,
@@ -197,15 +200,23 @@ export async function createViewer(options: ViewerOptions) {
         (_event, filename) => {
           const relative = filename?.split(path.sep).join('/');
           if (relative && !isVisibleRelative(relative)) return;
+          if (!relative || (changedPaths && changedPaths.size >= 256))
+            changedPaths = null;
+          else changedPaths?.add(relative);
           clearTimeout(reloadTimer);
           reloadTimer = setTimeout(() => {
             reloadTimer = undefined;
+            const change: ProjectChange = {
+              paths: changedPaths && [...changedPaths],
+            };
+            changedPaths = new Set();
+            const message = `event: change\ndata: ${JSON.stringify(change)}\n\n`;
             for (const client of eventClients) {
               if (client.destroyed) {
                 eventClients.delete(client);
                 continue;
               }
-              if (!client.write('event: change\ndata: {}\n\n')) {
+              if (!client.write(message)) {
                 eventClients.delete(client);
                 client.end();
               }

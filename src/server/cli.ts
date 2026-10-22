@@ -11,7 +11,7 @@ Usage: ${PRODUCT_NAME} [--root PATH] [--host HOST] [--port PORT] [--watch] [--al
   --root PATH   Project directory (default: current working directory)
   --host HOST   Bind address (default: 127.0.0.1)
   --port PORT   HTTP port, 0 for a free port (default: 8000)
-  --watch       Reload the viewer when project files change
+  --watch       Refresh files and previews when project files change
   --allow-html-network  Allow HTML previews to run remote scripts and make network requests
   -h, --help    Show this help
   -v, --version Show version

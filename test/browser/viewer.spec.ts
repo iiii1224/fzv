@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
 import { once } from 'node:events';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 // @ts-expect-error Fixtures and compiled server are plain JavaScript, used only by tests.
 import { createFixture } from '../fixtures.mjs';
@@ -255,6 +255,59 @@ test('reloads the viewer when a project file changes in watch mode', async ({
     'After change',
     { timeout: 10000 },
   );
+});
+
+test('finds files created after the page loaded without watch mode', async ({
+  page,
+}) => {
+  const added = path.join(fixture.root, 'docs', 'agent-created.txt');
+  await page.goto(origin);
+  await page.keyboard.press('/');
+  await page.getByRole('searchbox').fill('README.md');
+  await expect(
+    page.getByRole('button', { name: 'README.md', exact: true }),
+  ).toBeVisible();
+  await page.keyboard.press('Escape');
+  try {
+    await writeFile(added, 'Created by an agent');
+    await page.keyboard.press('/');
+    await page.getByRole('searchbox').fill('agent-created');
+    await expect(
+      page.getByRole('button', { name: 'docs/agent-created.txt', exact: true }),
+    ).toBeVisible();
+  } finally {
+    await rm(added, { force: true });
+  }
+});
+
+test('keeps file search available while watch mode rescans the project', async ({
+  page,
+}) => {
+  const added = path.join(fixture.root, 'docs', 'watch-added.txt');
+  await page.goto(watchOrigin);
+  await openFile(page, 'docs/watch.txt');
+  await page.evaluate(() => {
+    (window as Window & { fzvLoaded?: boolean }).fzvLoaded = true;
+  });
+  try {
+    await writeFile(added, 'Added while open');
+    await page.keyboard.press('/');
+    await page.getByRole('searchbox').fill('watch-added');
+    await expect(
+      page.getByRole('button', { name: 'docs/watch-added.txt', exact: true }),
+    ).toBeVisible({ timeout: 10000 });
+    await page.getByRole('searchbox').fill('docs/watch.txt');
+    await expect(
+      page.getByRole('button', { name: 'docs/watch.txt', exact: true }),
+    ).toBeVisible();
+    expect(
+      await page.evaluate(
+        () => (window as Window & { fzvLoaded?: boolean }).fzvLoaded,
+      ),
+    ).toBe(true);
+  } finally {
+    await rm(added, { force: true });
+  }
 });
 
 test('restores saved tabs before the full file index finishes loading', async ({

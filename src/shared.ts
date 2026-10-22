@@ -26,3 +26,7 @@ export interface FileIndex {
   files: ProjectFile[];
   directories: ProjectDirectory[];
 }
+/** Watch-mode change notification; null paths means any file may have changed. */
+export interface ProjectChange {
+  paths: string[] | null;
+}

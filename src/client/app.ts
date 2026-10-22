@@ -3,6 +3,7 @@ import './style.css';
 import { PRODUCT_NAME } from '../shared.js';
 import type {
   FileIndex,
+  ProjectChange,
   ProjectEntry,
   ProjectFile,
   ProjectInfo,
@@ -11,6 +12,7 @@ import { FuzzyIndex } from './search.js';
 import { readSession, writeSession } from './session.js';
 import type { SavedSession, SessionStorage } from './session.js';
 import { Workspace } from './workspace.js';
+import { hasViewer } from './preview.js';
 import { fileIcon } from './icons.js';
 import { initializeTheme } from './theme.js';
 import { installNavigation } from '../navigation.js';
@@ -34,6 +36,10 @@ let visible: ProjectEntry[] = [];
 let highlighted = 0;
 let notificationTimer: ReturnType<typeof setTimeout> | undefined;
 let renderFrame = 0;
+let indexSequence = 0;
+let appliedSequence = 0;
+let rescan: Promise<void> | undefined;
+let rescanQueued = false;
 let storage: SessionStorage | undefined;
 try {
   storage = window.localStorage;
@@ -169,6 +175,9 @@ function setSearchOpen(show: boolean): void {
     if (!searchPanel.open) searchPanel.showModal();
     search.focus();
     renderResults();
+    // Agents add files while the page is open. Search the current index
+    // until the rescan replaces it.
+    rescanIndex(false);
   } else {
     searchPanel.close();
     // Native dialog close events are queued. Restore focus now so a following
@@ -232,11 +241,59 @@ async function fetchSessionFiles(saved: SavedSession): Promise<ProjectFile[]> {
   return responses.flat();
 }
 
-async function loadIndex(initial = false): Promise<void> {
-  refresh.disabled = true;
-  count.textContent = 'Loading files…';
+// Scans can overlap. An older response must not replace a newer index.
+function applyIndex(
+  sequence: number,
+  data: Pick<FileIndex, 'files' | 'directories'>,
+): boolean {
+  if (sequence < appliedSequence) return false;
+  appliedSequence = sequence;
+  files = data.files;
+  index = new FuzzyIndex([...data.directories, ...files]);
+  return true;
+}
+
+function applyChange(change: ProjectChange): void {
+  const { paths } = change;
+  for (const tab of workspace.tabs)
+    if (
+      !paths ||
+      // HTML and Markdown viewers can embed other project files.
+      (hasViewer(tab.file) && tab.mode === 'viewer') ||
+      paths.some(
+        (path) =>
+          tab.file.path === path || tab.file.path.startsWith(`${path}/`),
+      )
+    )
+      workspace.reload(tab);
+  rescanIndex(true);
+}
+
+function scanIndex(mode: 'initial' | 'background'): void {
+  rescan = loadIndex(mode).finally(() => {
+    rescan = undefined;
+    if (!rescanQueued) return;
+    rescanQueued = false;
+    scanIndex('background');
+  });
+}
+// A scan in progress is fresh enough for opening search, but it may have
+// missed a reported change. Queue one follow-up instead of restarting it.
+function rescanIndex(afterChange: boolean): void {
+  if (!rescan) scanIndex('background');
+  else if (afterChange) rescanQueued = true;
+}
+
+async function loadIndex(
+  mode: 'initial' | 'refresh' | 'background' = 'refresh',
+): Promise<void> {
+  const sequence = ++indexSequence;
+  if (mode !== 'background') {
+    refresh.disabled = true;
+    count.textContent = 'Loading files…';
+  }
   try {
-    if (initial) {
+    if (mode === 'initial') {
       const indexRequest: Promise<{ data: FileIndex } | { error: unknown }> =
         fetch('/api/files').then(
           async (response) =>
@@ -251,7 +308,9 @@ async function loadIndex(initial = false): Promise<void> {
       const project = (await projectResponse.json()) as ProjectInfo;
       if (project.watch) {
         const events = new EventSource('/api/events');
-        events.addEventListener('change', () => window.location.reload());
+        events.addEventListener('change', (event) =>
+          applyChange(JSON.parse(event.data) as ProjectChange),
+        );
       }
       projectId = project.id;
       byId('project-name').textContent = project.name;
@@ -270,29 +329,28 @@ async function loadIndex(initial = false): Promise<void> {
       if ('error' in result) throw result.error;
       const data = result.data;
       if (saved && !restored) workspace.restore(saved, data.files);
-      files = data.files;
-      index = new FuzzyIndex([...data.directories, ...files]);
+      applyIndex(sequence, data);
       renderResults();
     } else {
       const response = await fetch('/api/files');
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = (await response.json()) as FileIndex;
+      if (!applyIndex(sequence, data)) return;
       projectId = data.project.id;
       const available = new Set(data.files.map((file) => file.path));
-      files = data.files;
-      index = new FuzzyIndex([...data.directories, ...files]);
       byId('project-name').textContent = data.project.name;
       byId('status-project').textContent = data.project.name;
       for (const tab of workspace.tabs)
         if (!available.has(tab.file.path)) workspace.close(tab);
       renderResults();
-      notify('File list refreshed.');
+      if (mode === 'refresh') notify('File list refreshed.');
     }
   } catch (error) {
+    if (sequence !== indexSequence) return;
     count.textContent = 'Could not load files';
     notify(`Could not load the project: ${error}`);
   } finally {
-    refresh.disabled = false;
+    if (sequence === indexSequence) refresh.disabled = false;
   }
 }
 
@@ -486,4 +544,4 @@ window.addEventListener('message', (event) => {
     navigation.showHints();
   }
 });
-void loadIndex(true);
+scanIndex('initial');
