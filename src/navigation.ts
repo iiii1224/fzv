@@ -1,8 +1,6 @@
 export interface NavigationOptions {
   getScrollRoot?: () => HTMLElement | null;
-  onScroll?: (
-    key: 'h' | 'j' | 'k' | 'l' | 'top' | 'bottom',
-  ) => boolean;
+  onScroll?: (key: 'h' | 'j' | 'k' | 'l' | 'top' | 'bottom') => boolean;
   onSearch?: () => void;
   onReload?: () => void;
   onFocus?: () => void;
