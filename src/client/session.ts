@@ -1,3 +1,4 @@
+import type { GitStage } from '../shared.js';
 import type { LayoutNode } from './layout.js';
 
 interface LegacySession {
@@ -5,17 +6,33 @@ interface LegacySession {
   tabs: string[];
   active: string | null;
 }
+export interface SessionTab {
+  path: string;
+  mode: 'viewer' | 'source';
+  /** Present for Source Control diff tabs. */
+  diff?: GitStage;
+  originalPath?: string;
+  layout?: 'side-by-side' | 'inline';
+  collapse?: boolean;
+  ignoreTrimWhitespace?: boolean;
+}
 export interface WorkspaceSession {
   version: 2;
   layout: LayoutNode;
   groups: {
     id: string;
-    tabs: { path: string; mode: 'viewer' | 'source' }[];
+    tabs: SessionTab[];
+    /** Key of the selected tab: its path, or a diff key from tabKey(). */
     active: string | null;
   }[];
   activeGroup: string;
 }
 export type SavedSession = LegacySession | WorkspaceSession;
+
+/** Identifies a tab within a group: a file preview, or one of its two diffs. */
+export function tabKey(path: string, diff?: { stage: GitStage }): string {
+  return diff ? `diff\0${diff.stage}\0${path}` : path;
+}
 export interface SessionStorage {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
@@ -45,23 +62,40 @@ function parseWorkspace(value: unknown): WorkspaceSession | null {
     )
       return null;
     ids.add(group.id);
-    const paths = new Set<string>();
-    const tabs: WorkspaceSession['groups'][number]['tabs'] = [];
+    const keys = new Set<string>();
+    const tabs: SessionTab[] = [];
+    let first: string | null = null;
     for (const tab of group.tabs) {
-      if (!tab || typeof tab.path !== 'string' || paths.has(tab.path)) continue;
-      paths.add(tab.path);
+      if (!tab || typeof tab.path !== 'string') continue;
+      const diff =
+        tab.diff === 'index' || tab.diff === 'worktree' ? tab.diff : undefined;
+      const key = tabKey(tab.path, diff && { stage: diff });
+      if (keys.has(key)) continue;
+      keys.add(key);
+      first ??= key;
       tabs.push({
         path: tab.path,
         mode: tab.mode === 'source' ? 'source' : 'viewer',
+        ...(diff
+          ? {
+              diff,
+              ...(typeof tab.originalPath === 'string'
+                ? { originalPath: tab.originalPath }
+                : {}),
+              layout: tab.layout === 'inline' ? 'inline' : 'side-by-side',
+              collapse: tab.collapse === true,
+              ignoreTrimWhitespace: tab.ignoreTrimWhitespace === true,
+            }
+          : {}),
       });
     }
     groups.push({
       id: group.id,
       tabs,
       active:
-        typeof group.active === 'string' && paths.has(group.active)
+        typeof group.active === 'string' && keys.has(group.active)
           ? group.active
-          : (tabs[0]?.path ?? null),
+          : first,
     });
   }
   const used = new Set<string>();

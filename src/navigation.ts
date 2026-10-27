@@ -111,6 +111,8 @@ export function installNavigation(options: NavigationOptions = {}): {
         ['Ctrl/Cmd + Shift + \\', 'Split the editor below'],
         ['Ctrl/Cmd + f', 'Find in a PDF'],
         ['Ctrl/Cmd + + / − / 0', 'Zoom an image or PDF'],
+        [']c / [c', 'Next / previous change in a diff'],
+        ['Alt + F5 / Shift + Alt + F5', 'Next / previous change in a diff'],
       );
     }
     const list = document.createElement('div');

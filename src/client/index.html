@@ -152,6 +152,74 @@
               </button>
             </div>
             <button
+              id="open-changes"
+              class="toolbar-button"
+              aria-label="Open changes"
+              title="Open Changes"
+              hidden
+            >
+              <i class="codicon codicon-git-compare" aria-hidden="true"></i>
+            </button>
+            <div
+              id="diff-actions"
+              class="diff-actions"
+              role="group"
+              aria-label="Diff"
+              hidden
+            >
+              <button
+                id="previous-change"
+                class="toolbar-button"
+                aria-label="Previous change"
+                title="Previous Change ([c)"
+              >
+                <i class="codicon codicon-arrow-up" aria-hidden="true"></i>
+              </button>
+              <button
+                id="next-change"
+                class="toolbar-button"
+                aria-label="Next change"
+                title="Next Change (]c)"
+              >
+                <i class="codicon codicon-arrow-down" aria-hidden="true"></i>
+              </button>
+              <button
+                id="diff-inline"
+                class="toolbar-button"
+                aria-label="Inline view"
+                aria-pressed="false"
+                title="Toggle Inline View"
+              >
+                <i class="codicon codicon-diff-single" aria-hidden="true"></i>
+              </button>
+              <button
+                id="diff-collapse"
+                class="toolbar-button"
+                aria-label="Collapse unchanged regions"
+                aria-pressed="false"
+                title="Collapse Unchanged Regions"
+              >
+                <i class="codicon codicon-fold" aria-hidden="true"></i>
+              </button>
+              <button
+                id="diff-whitespace"
+                class="toolbar-button"
+                aria-label="Show leading and trailing whitespace differences"
+                aria-pressed="true"
+                title="Show Leading/Trailing Whitespace Differences"
+              >
+                <i class="codicon codicon-whitespace" aria-hidden="true"></i>
+              </button>
+              <button
+                id="open-changed-file"
+                class="toolbar-button"
+                aria-label="Open file"
+                title="Open File"
+              >
+                <i class="codicon codicon-go-to-file" aria-hidden="true"></i>
+              </button>
+            </div>
+            <button
               id="split-right"
               class="toolbar-button"
               aria-label="Split editor right"

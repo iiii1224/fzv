@@ -84,6 +84,12 @@ Open tabs, the split layout, and view modes are saved in the browser and restore
 
 Files are limited to 20 MiB each. "Download" saves the current file in its original format.
 
+### Changes
+
+When the project is inside a git repository and `git` is on `PATH`, a text file with uncommitted changes shows an "Open Changes" button in its toolbar. It opens a diff in the style of VS Code: side by side, with changed lines and the changed characters within them highlighted. Working tree changes compare the index with the file on disk; staged-only changes compare `HEAD` with the index.
+
+The diff toolbar moves between changes (also `]c` / `[c`), switches to an inline view, collapses unchanged regions, and toggles whether leading and trailing whitespace differences are shown. They are shown by default. fzv only reads from git: it never stages, commits, or takes the index lock.
+
 ## Keyboard shortcuts
 
 | Keys                     | Action                                        |
@@ -100,6 +106,7 @@ Files are limited to 20 MiB each. "Download" saves the current file in its origi
 | `Ctrl/Cmd+1`–`9`         | Focus a pane                                  |
 | `Ctrl/Cmd+F`             | Search within a PDF                           |
 | `Ctrl/Cmd` + `+` `-` `0` | Zoom images and PDFs (`0` fits to the view)   |
+| `]c` / `[c`              | Next / previous change in a diff              |
 | `Escape`                 | Close search, help, or labels                 |
 
 Text fields keep their normal typing behavior. Shortcuts reserved by the browser take precedence.

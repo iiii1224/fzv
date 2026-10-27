@@ -1,0 +1,217 @@
+/* Diff editor colors are VS Code 1.106.0 registry defaults from
+ * src/vs/platform/theme/common/colors/editorColors.ts; the Modern themes do
+ * not override them. Class names follow VS Code's diffEditor style.css. */
+:root {
+  --vscode-diffEditor-insertedTextBackground: #9ccc2c40;
+  --vscode-diffEditor-removedTextBackground: #ff000033;
+  --vscode-diffEditor-insertedLineBackground: rgba(155, 185, 85, 0.2);
+  --vscode-diffEditor-removedLineBackground: rgba(255, 0, 0, 0.2);
+  --vscode-diffEditor-diagonalFill: #22222233;
+  --vscode-diffEditor-unchangedRegionBackground: var(
+    --vscode-sideBar-background
+  );
+  --vscode-diffEditor-unchangedRegionForeground: var(--vscode-foreground);
+  --diff-line-height: 20px;
+}
+:root[data-theme='dark'] {
+  --vscode-diffEditor-insertedTextBackground: #9ccc2c33;
+  --vscode-diffEditor-diagonalFill: #cccccc33;
+}
+
+.diff-pane {
+  background: var(--vscode-editor-background);
+}
+.diff-editor {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.diff-message {
+  padding: 6px 16px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+}
+.diff-message[hidden] {
+  display: none;
+}
+.diff-sides {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  padding-right: 14px;
+}
+.diff-sides[data-layout='inline'] {
+  grid-template-columns: minmax(0, 1fr);
+}
+.diff-side {
+  overflow: auto;
+  min-width: 0;
+  outline: none;
+}
+.diff-side.original {
+  overflow-y: hidden;
+}
+.diff-side.modified {
+  box-shadow: -6px 0 5px -5px var(--vscode-scrollbar-shadow);
+}
+.diff-lines {
+  width: max-content;
+  min-width: 100%;
+  padding-bottom: 12px;
+  font: 13px/var(--diff-line-height) var(--mono);
+  tab-size: 4;
+}
+.diff-row {
+  display: flex;
+  height: var(--diff-line-height);
+  white-space: pre;
+}
+.diff-gutter {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  display: flex;
+  flex: none;
+  color: var(--vscode-editorLineNumber-foreground);
+  background: var(--vscode-editor-background);
+  user-select: none;
+}
+.diff-line-number {
+  min-width: 48px;
+  padding: 0 4px 0 8px;
+  text-align: right;
+}
+.diff-sign {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+}
+.diff-sign .codicon {
+  font-size: 11px;
+  opacity: 0.7;
+}
+.diff-code {
+  flex: 1;
+  padding-right: 16px;
+  color: var(--vscode-editor-foreground);
+}
+
+.line-insert {
+  background-color: var(--vscode-diffEditor-insertedLineBackground);
+}
+.line-delete {
+  background-color: var(--vscode-diffEditor-removedLineBackground);
+}
+/* The gutter is opaque, so layer the line color over the editor background. */
+.gutter-insert {
+  background-image: linear-gradient(
+    var(--vscode-diffEditor-insertedLineBackground),
+    var(--vscode-diffEditor-insertedLineBackground)
+  );
+}
+.gutter-delete {
+  background-image: linear-gradient(
+    var(--vscode-diffEditor-removedLineBackground),
+    var(--vscode-diffEditor-removedLineBackground)
+  );
+}
+.char-insert,
+.whole-insert .diff-code {
+  background-color: var(--vscode-diffEditor-insertedTextBackground);
+}
+.char-delete,
+.whole-delete .diff-code {
+  background-color: var(--vscode-diffEditor-removedTextBackground);
+}
+.char-insert.diff-range-empty {
+  border-left: solid var(--vscode-diffEditor-insertedTextBackground) 3px;
+  background: none;
+}
+.char-delete.diff-range-empty {
+  margin-left: -1px;
+  border-left: solid var(--vscode-diffEditor-removedTextBackground) 3px;
+  background: none;
+}
+.diagonal-fill {
+  background-image: linear-gradient(
+    -45deg,
+    var(--vscode-diffEditor-diagonalFill) 12.5%,
+    #0000 12.5%,
+    #0000 50%,
+    var(--vscode-diffEditor-diagonalFill) 50%,
+    var(--vscode-diffEditor-diagonalFill) 62.5%,
+    #0000 62.5%,
+    #0000 100%
+  );
+  background-size: 8px 8px;
+}
+
+.diff-hidden-lines {
+  position: sticky;
+  left: 0;
+  width: 100%;
+  background: var(--vscode-diffEditor-unchangedRegionBackground);
+  color: var(--vscode-diffEditor-unchangedRegionForeground);
+}
+.diff-hidden-lines-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 100%;
+  padding: 0 12px;
+  border: 0;
+  color: inherit;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.diff-hidden-lines-button:hover {
+  color: var(--vscode-textLink-activeForeground);
+}
+
+.diff-overview {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 14px;
+  border-left: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.03);
+  cursor: pointer;
+}
+:root[data-theme='dark'] .diff-overview {
+  background: rgba(255, 255, 255, 0.01);
+}
+.diff-overview-mark {
+  position: absolute;
+  width: 6px;
+}
+.diff-overview-mark.delete {
+  left: 1px;
+  background: var(--vscode-diffEditor-removedTextBackground);
+}
+.diff-overview-mark.insert {
+  right: 1px;
+  background: var(--vscode-diffEditor-insertedTextBackground);
+}
+
+.diff-actions {
+  display: flex;
+  gap: 2px;
+}
+.diff-actions[hidden] {
+  display: none;
+}
+.diff-actions .toolbar-button[aria-pressed='true'] {
+  color: var(--vscode-inputOption-activeForeground);
+  background: var(--vscode-inputOption-activeBackground);
+}
+.tab-description {
+  margin-left: 4px;
+  opacity: 0.75;
+  font-size: 0.9em;
+}

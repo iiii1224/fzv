@@ -1,4 +1,5 @@
 import { createHighlighterCore } from 'shiki/core';
+import type { ThemedTokenWithVariants } from 'shiki/core';
 import { createJavaScriptRegexEngine } from 'shiki/engine/javascript';
 import lightPlus from '@shikijs/themes/light-plus';
 import darkPlus from '@shikijs/themes/dark-plus';
@@ -84,20 +85,25 @@ const highlighter = createHighlighterCore({
 });
 const loading = new Map<Language, Promise<void>>();
 
-export async function highlightSource(
-  element: HTMLElement,
+export type SyntaxToken = ThemedTokenWithVariants;
+
+function sourceLanguage(filename: string): Language | undefined {
+  return filename === 'Makefile'
+    ? 'make'
+    : filename === 'Dockerfile'
+      ? 'dockerfile'
+      : extensions[filename.split('.').at(-1)!.toLowerCase()];
+}
+
+/** Tokenizes source with Light+ and Dark+ colors, or returns null for plain text. */
+export async function tokenizeSource(
   content: string,
   filename: string,
   signal: AbortSignal,
-): Promise<void> {
-  const language =
-    filename === 'Makefile'
-      ? 'make'
-      : filename === 'Dockerfile'
-        ? 'dockerfile'
-        : extensions[filename.split('.').at(-1)!.toLowerCase()];
+): Promise<SyntaxToken[][] | null> {
+  const language = sourceLanguage(filename);
   // Retain a responsive plain-text view for very large files and unknown formats.
-  if (!language || content.length > 512 * 1024 || signal.aborted) return;
+  if (!language || content.length > 512 * 1024 || signal.aborted) return null;
   const engine = await highlighter;
   let ready = loading.get(language);
   if (!ready) {
@@ -105,40 +111,55 @@ export async function highlightSource(
     loading.set(language, ready);
   }
   await ready;
-  if (signal.aborted) return;
-  const tokens = engine.codeToTokensWithThemes(content, {
+  if (signal.aborted) return null;
+  return engine.codeToTokensWithThemes(content, {
     lang: language,
     themes: { light: 'light-plus', dark: 'dark-plus' },
   });
+}
+
+export function tokenSpan(
+  token: SyntaxToken,
+  text = token.content,
+): HTMLElement {
+  const span = document.createElement('span');
+  span.className = 'syntax-token';
+  span.textContent = text;
+  for (const theme of ['light', 'dark']) {
+    const variant = token.variants[theme];
+    span.style.setProperty(`--syntax-${theme}`, variant.color ?? 'inherit');
+    const style = variant.fontStyle ?? 0;
+    span.style.setProperty(
+      `--syntax-${theme}-style`,
+      style & 1 ? 'italic' : 'normal',
+    );
+    span.style.setProperty(
+      `--syntax-${theme}-weight`,
+      style & 2 ? 'bold' : 'normal',
+    );
+    span.style.setProperty(
+      `--syntax-${theme}-decoration`,
+      style & 4 ? 'underline' : 'none',
+    );
+  }
+  return span;
+}
+
+export async function highlightSource(
+  element: HTMLElement,
+  content: string,
+  filename: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const tokens = await tokenizeSource(content, filename, signal);
+  if (!tokens || signal.aborted) return;
   const fragment = document.createDocumentFragment();
   // Preserve original line endings and trailing newlines when replacing text with tokens.
   const endings = content.match(/\r\n|\r|\n/g) ?? [];
   tokens.forEach((line, index) => {
     if (index) fragment.append(endings[index - 1] ?? '\n');
-    for (const token of line) {
-      const span = document.createElement('span');
-      span.className = 'syntax-token';
-      span.textContent = token.content;
-      for (const theme of ['light', 'dark']) {
-        const variant = token.variants[theme];
-        span.style.setProperty(`--syntax-${theme}`, variant.color ?? 'inherit');
-        const style = variant.fontStyle ?? 0;
-        span.style.setProperty(
-          `--syntax-${theme}-style`,
-          style & 1 ? 'italic' : 'normal',
-        );
-        span.style.setProperty(
-          `--syntax-${theme}-weight`,
-          style & 2 ? 'bold' : 'normal',
-        );
-        span.style.setProperty(
-          `--syntax-${theme}-decoration`,
-          style & 4 ? 'underline' : 'none',
-        );
-      }
-      fragment.append(span);
-    }
+    for (const token of line) fragment.append(tokenSpan(token));
   });
   element.replaceChildren(fragment);
-  element.dataset.language = language;
+  element.dataset.language = sourceLanguage(filename);
 }

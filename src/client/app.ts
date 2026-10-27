@@ -3,6 +3,7 @@ import './style.css';
 import { PRODUCT_NAME } from '../shared.js';
 import type {
   FileIndex,
+  GitStatus,
   ProjectChange,
   ProjectEntry,
   ProjectFile,
@@ -40,6 +41,9 @@ let indexSequence = 0;
 let appliedSequence = 0;
 let rescan: Promise<void> | undefined;
 let rescanQueued = false;
+let gitEnabled = false;
+let pendingBracket = '';
+let gitRequest: AbortController | undefined;
 let storage: SessionStorage | undefined;
 try {
   storage = window.localStorage;
@@ -200,6 +204,44 @@ function selectEntry(entry: ProjectEntry): void {
   setSearchOpen(false);
 }
 
+/** Opens a project file by path, validating it like a restored tab. */
+async function openPath(path: string): Promise<void> {
+  const known = files.find((file) => file.path === path);
+  if (known) {
+    workspace.open(known);
+    return;
+  }
+  try {
+    const response = await fetch(
+      `/api/session-files?${new URLSearchParams({ path })}`,
+    );
+    const [file] = response.ok
+      ? ((await response.json()) as ProjectFile[])
+      : [];
+    if (file) workspace.open(file);
+    else notify(`${path} is not available.`);
+  } catch (error) {
+    notify(`Could not open ${path}: ${error}`);
+  }
+}
+
+/** Refreshes Source Control status. Like VS Code, this runs on changes and focus. */
+async function refreshGit(): Promise<void> {
+  if (!gitEnabled) return;
+  gitRequest?.abort();
+  const request = new AbortController();
+  gitRequest = request;
+  try {
+    const response = await fetch('/api/git/status', { signal: request.signal });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const status = (await response.json()) as GitStatus;
+    if (gitRequest === request)
+      workspace.setGitChanges(status.available ? status.changes : []);
+  } catch {
+    /* Keep the previous status; the next refresh can succeed. */
+  }
+}
+
 function savedPaths(saved: SavedSession): string[] {
   return [
     ...new Set(
@@ -267,6 +309,7 @@ function applyChange(change: ProjectChange): void {
     )
       workspace.reload(tab);
   rescanIndex(true);
+  void refreshGit();
 }
 
 function scanIndex(mode: 'initial' | 'background'): void {
@@ -313,6 +356,8 @@ async function loadIndex(
         );
       }
       projectId = project.id;
+      gitEnabled = project.git === true;
+      void refreshGit();
       byId('project-name').textContent = project.name;
       byId('status-project').textContent = project.name;
       const saved = storage ? readSession(storage, projectId) : null;
@@ -341,7 +386,7 @@ async function loadIndex(
       byId('project-name').textContent = data.project.name;
       byId('status-project').textContent = data.project.name;
       for (const tab of workspace.tabs)
-        if (!available.has(tab.file.path)) workspace.close(tab);
+        if (!tab.diff && !available.has(tab.file.path)) workspace.close(tab);
       renderResults();
       if (mode === 'refresh') notify('File list refreshed.');
     }
@@ -456,6 +501,32 @@ window.addEventListener('keydown', (event) => {
     }
   }
   const active = workspace.activeTab;
+  // VS Code's diff editor uses Alt+F5 / Shift+Alt+F5; ]c and [c follow Vim's diff mode.
+  if (event.key === 'F5' && event.altKey && !event.ctrlKey && !event.metaKey) {
+    if (workspace.navigateChange(event.shiftKey ? -1 : 1))
+      event.preventDefault();
+    return;
+  }
+  const bracket = pendingBracket;
+  pendingBracket = '';
+  if (
+    !typing &&
+    active?.diff &&
+    !event.ctrlKey &&
+    !event.metaKey &&
+    !event.altKey
+  ) {
+    if (bracket && event.key === 'c') {
+      event.preventDefault();
+      workspace.navigateChange(bracket === ']' ? 1 : -1);
+      return;
+    }
+    if (event.key === ']' || event.key === '[') {
+      event.preventDefault();
+      pendingBracket = event.key;
+      return;
+    }
+  }
   if (
     !typing &&
     (event.ctrlKey || event.metaKey) &&
@@ -505,7 +576,7 @@ const navigation = installNavigation({
     return (
       [
         ...(active?.pane.element.querySelectorAll<HTMLElement>(
-          '.source-preview, .viewer-surface, .pdf-scroll',
+          '.source-preview, .viewer-surface, .pdf-scroll, .diff-scroll',
         ) ?? []),
       ].find((element) => element.getClientRects().length > 0) ?? null
     );
@@ -526,7 +597,9 @@ const workspace = new Workspace(
     save();
   },
   (text, label) => void copyToClipboard(text, label),
+  (path) => void openPath(path),
 );
+window.addEventListener('focus', () => void refreshGit());
 window.addEventListener('message', (event) => {
   if (event.origin !== 'null') return;
   const tab = workspace.frameTab(event.source);

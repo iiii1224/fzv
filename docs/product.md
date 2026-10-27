@@ -13,6 +13,7 @@
 - HTML and Markdown default to Viewer and offer Viewer / Source buttons. Other text opens in Source only. Source displays exact text with line numbers and syntax highlighting. Each tab retains its mode while switching tabs or reloading its file.
 - Source views copy the complete original text, the active file path has a nearby copy control, and the active file can be downloaded from the toolbar.
 - Tabs support native drag reordering, four-direction splits, moving between groups and Ctrl-drag (Option-drag on macOS) copying. Each group has its own selected tab and toolbar; search opens files in the focused group. Split buttons duplicate the current file. Sashes resize by pointer or arrow keys and reset to equal sizes on double-click. Empty groups close automatically; up to 32 groups are supported.
+- In a git repository, text files with uncommitted changes offer Open Changes, which opens a diff tab labelled like VS Code's "file (Working Tree)" or "file (Index)" editors. Working tree diffs compare the index with the file; staged-only changes compare HEAD with the index. Diffs default to side by side, with inline, collapsed-unchanged-region, and whitespace options saved per tab. `]c` / `[c` and VS Code's Alt+F5 / Shift+Alt+F5 move between changes.
 - Initial distribution: one npm package invoked with `npx`; no Python, native addon, secondary download, or install-time build.
 
 ## Stack
@@ -46,6 +47,10 @@ HTML rendering injects the same self-contained navigation handler used by the ma
 Without `--port`, the CLI listens on a port derived from the project identifier (20000–29999), so a project keeps the same origin, and therefore its saved session and theme, across restarts. If that port is in use or not permitted, it falls back to an OS-assigned free port and prints a warning; the session saved for the usual origin is not available there. An explicit `--port`, including `0`, is used as given and never falls back.
 
 The HTTP server defaults to loopback, checks request Host names against the bound/local addresses, rejects cross-origin API requests, and supports GET/HEAD only. LAN access is opt-in and unauthenticated.
+
+Diffs use VS Code's default lines diff algorithm, vendored as TypeScript source and run in a module worker with VS Code's 5-second computation limit. The side-by-side alignment, unchanged regions, and decorations port the diff editor's rules onto plain DOM rows with fixed line heights; Shiki tokens are split at character-change boundaries. Only the modified side scrolls vertically, and the original follows it.
+
+The CLI finds `git` on `PATH` and passes it to the server, which runs it only with argument arrays in the project root, with `--no-optional-locks`, `core.fsmonitor=false`, and no terminal prompt. Status uses porcelain v1 with `-z`, limited to the project root; repository paths are mapped back to project paths and dropped unless they pass the catalog visibility rules. HEAD and index content are read with `git cat-file` for visible text and HTML paths only, subject to the 20 MiB limit. Without git or outside a repository, the git routes report unavailable and the UI hides Open Changes.
 
 ## Deferred
 

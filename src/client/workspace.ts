@@ -1,4 +1,10 @@
-import type { ProjectFile } from '../shared.js';
+import type { GitChange, GitStage, ProjectFile } from '../shared.js';
+import {
+  createDiffPreview,
+  DEFAULT_DIFF_STATE,
+  STAGE_LABELS,
+} from './diff/view.js';
+import type { DiffPane, DiffViewState } from './diff/view.js';
 import { fileIcon, icon } from './icons.js';
 import {
   groupIds,
@@ -16,11 +22,19 @@ import {
   hasViewer,
 } from './preview.js';
 import type { PreviewMode, PreviewPane } from './preview.js';
+import { tabKey } from './session.js';
 import type { SavedSession, WorkspaceSession } from './session.js';
 
+/** A Source Control comparison, shown like VS Code's "file (Working Tree)" editors. */
+export interface DiffTab {
+  stage: GitStage;
+  originalPath?: string;
+  state: DiffViewState;
+}
 export interface EditorTab {
   id: string;
   file: ProjectFile;
+  diff?: DiffTab;
   pane: PreviewPane;
   element: HTMLElement;
   button: HTMLButtonElement;
@@ -42,6 +56,8 @@ interface DropTarget {
   direction?: Direction;
   index?: number;
 }
+
+const keyOf = (tab: EditorTab) => tabKey(tab.file.path, tab.diff);
 
 function position(element: HTMLElement, box: Rect): void {
   Object.assign(element.style, {
@@ -68,11 +84,13 @@ export class Workspace {
   private highlight = document.createElement('div');
   private resizeSurface = document.createElement('div');
   private resizeObserver: ResizeObserver;
+  private gitChanges = new Map<string, GitChange[]>();
 
   constructor(
     private host: HTMLElement,
     private onChange: () => void,
     private copyToClipboard: (text: string, label: string) => void,
+    private onOpenFile: (path: string) => void = () => {},
   ) {
     this.selectedGroup = this.makeGroup();
     this.tree = { type: 'group', id: this.selectedGroup.id };
@@ -177,6 +195,39 @@ export class Workspace {
     control('source-mode').addEventListener('click', () =>
       this.setMode(group.active, 'source'),
     );
+    control('open-changes').addEventListener('click', () => {
+      const tab = group.active;
+      const change = tab && this.preferredChange(tab.file.path);
+      if (change) this.openDiff(change);
+    });
+    control('open-changed-file').addEventListener('click', () => {
+      const tab = group.active;
+      if (tab?.diff) this.onOpenFile(tab.file.path);
+    });
+    control('previous-change').addEventListener('click', () =>
+      this.navigateChange(-1),
+    );
+    control('next-change').addEventListener('click', () =>
+      this.navigateChange(1),
+    );
+    control('diff-inline').addEventListener('click', () =>
+      this.updateDiff(group.active, (state) => ({
+        ...state,
+        layout: state.layout === 'inline' ? 'side-by-side' : 'inline',
+      })),
+    );
+    control('diff-collapse').addEventListener('click', () =>
+      this.updateDiff(group.active, (state) => ({
+        ...state,
+        collapse: !state.collapse,
+      })),
+    );
+    control('diff-whitespace').addEventListener('click', () =>
+      this.updateDiff(group.active, (state) => ({
+        ...state,
+        ignoreTrimWhitespace: !state.ignoreTrimWhitespace,
+      })),
+    );
     control('split-right').addEventListener('click', () =>
       this.split(group, 'right'),
     );
@@ -213,10 +264,33 @@ export class Workspace {
     this.host.append(pane);
   }
 
+  private createPane(
+    file: ProjectFile,
+    revision: number,
+    mode: PreviewMode,
+    diff?: DiffTab,
+  ): PreviewPane {
+    return diff
+      ? createDiffPreview(
+          {
+            path: file.path,
+            name: file.name,
+            stage: diff.stage,
+            originalPath: diff.originalPath,
+          },
+          revision,
+          diff.state,
+        )
+      : createPreview(file, revision, mode, (content) =>
+          this.copyToClipboard(content, 'Source'),
+        );
+  }
+
   private makeTab(
     file: ProjectFile,
     group: EditorGroup,
     mode = defaultPreviewMode(file),
+    diff?: DiffTab,
   ): EditorTab {
     const id = `file-tab-${++this.tabSequence}`;
     const element = document.createElement('div');
@@ -234,16 +308,24 @@ export class Workspace {
     const name = document.createElement('span');
     name.textContent = file.name;
     button.append(fileIcon(file), name);
+    if (diff) {
+      const label = `${file.path} (${STAGE_LABELS[diff.stage][1]})`;
+      button.title = label;
+      button.setAttribute('aria-label', label);
+      const description = document.createElement('span');
+      description.className = 'tab-description';
+      description.textContent = `(${STAGE_LABELS[diff.stage][1]})`;
+      button.append(description);
+    }
     const tab: EditorTab = {
       id,
       file,
+      ...(diff ? { diff: { ...diff, state: { ...diff.state } } } : {}),
       group,
       mode,
       element,
       button,
-      pane: createPreview(file, 0, mode, (content) =>
-        this.copyToClipboard(content, 'Source'),
-      ),
+      pane: this.createPane(file, 0, mode, diff),
       revision: 0,
     };
     button.addEventListener('click', () => this.activate(tab));
@@ -272,7 +354,7 @@ export class Workspace {
     close.type = 'button';
     close.className = 'tab-close';
     close.title = 'Close tab';
-    close.setAttribute('aria-label', `Close ${file.path}`);
+    close.setAttribute('aria-label', `Close ${button.title}`);
     close.append(icon('close'));
     close.addEventListener('click', () => this.close(tab, true));
     element.append(button, close);
@@ -297,9 +379,73 @@ export class Workspace {
   open(file: ProjectFile): void {
     const group = this.selectedGroup;
     this.activate(
-      group.tabs.find((tab) => tab.file.path === file.path) ??
+      group.tabs.find((tab) => keyOf(tab) === file.path) ??
         this.makeTab(file, group),
     );
+  }
+
+  /** Opens a Source Control change: a diff for text, the file itself otherwise. */
+  openDiff(change: GitChange): void {
+    const name = change.path.split('/').at(-1)!;
+    if (change.kind !== 'text' && change.kind !== 'html') {
+      if (change.status !== 'D') this.onOpenFile(change.path);
+      return;
+    }
+    const group = this.selectedGroup;
+    const key = tabKey(change.path, change);
+    const existing = group.tabs.find((tab) => keyOf(tab) === key);
+    if (existing) {
+      if (existing.diff!.originalPath !== change.originalPath) {
+        existing.diff!.originalPath = change.originalPath;
+        this.reload(existing);
+      }
+      this.activate(existing);
+      return;
+    }
+    this.activate(
+      this.makeTab(
+        { path: change.path, name, kind: change.kind, size: 0 },
+        group,
+        'source',
+        {
+          stage: change.stage,
+          originalPath: change.originalPath,
+          state: this.selectedGroup.active?.diff?.state ?? DEFAULT_DIFF_STATE,
+        },
+      ),
+    );
+  }
+
+  /** Latest Source Control status, used for the "Open Changes" action. */
+  setGitChanges(changes: GitChange[]): void {
+    this.gitChanges = new Map();
+    for (const change of changes)
+      this.gitChanges.set(change.path, [
+        ...(this.gitChanges.get(change.path) ?? []),
+        change,
+      ]);
+    this.render(false);
+  }
+  private preferredChange(path: string): GitChange | undefined {
+    const changes = this.gitChanges.get(path) ?? [];
+    // Like VS Code, prefer working tree changes over staged ones.
+    return changes.find((change) => change.stage === 'worktree') ?? changes[0];
+  }
+
+  navigateChange(direction: 1 | -1): boolean {
+    const tab = this.activeTab;
+    if (!tab?.diff) return false;
+    (tab.pane as DiffPane).navigate(direction);
+    return true;
+  }
+  private updateDiff(
+    tab: EditorTab | null,
+    change: (state: DiffViewState) => DiffViewState,
+  ): void {
+    if (!tab?.diff) return;
+    tab.diff.state = change(tab.diff.state);
+    (tab.pane as DiffPane).update(tab.diff.state);
+    this.render();
   }
 
   close(tab: EditorTab, focus = false): void {
@@ -377,9 +523,7 @@ export class Workspace {
       );
       group = added;
     }
-    const duplicate = group.tabs.find(
-      (item) => item.file.path === tab.file.path,
-    );
+    const duplicate = group.tabs.find((item) => keyOf(item) === keyOf(tab));
     if (group === source) {
       if (target.index !== undefined) {
         group.tabs.splice(group.tabs.indexOf(tab), 1);
@@ -393,7 +537,8 @@ export class Workspace {
       group.tabs.splice(target.index, 0, duplicate);
     }
     if (copy) {
-      const added = duplicate ?? this.makeTab(tab.file, group, tab.mode);
+      const added =
+        duplicate ?? this.makeTab(tab.file, group, tab.mode, tab.diff);
       if (!duplicate && target.index !== undefined) {
         group.tabs.splice(group.tabs.indexOf(added), 1);
         group.tabs.splice(target.index, 0, added);
@@ -423,14 +568,12 @@ export class Workspace {
     if (!tab) return;
     tab.pane.dispose();
     tab.revision = ++this.revision;
-    tab.pane = createPreview(tab.file, tab.revision, tab.mode, (content) =>
-      this.copyToClipboard(content, 'Source'),
-    );
+    tab.pane = this.createPane(tab.file, tab.revision, tab.mode, tab.diff);
     this.mountPane(tab);
     this.render();
   }
   private setMode(tab: EditorTab | null, mode: PreviewMode): void {
-    if (!tab?.pane.setMode || !hasViewer(tab.file)) return;
+    if (tab?.diff || !tab?.pane.setMode || !hasViewer(tab.file)) return;
     tab.mode = mode;
     tab.pane.setMode(mode);
     this.render();
@@ -463,8 +606,17 @@ export class Workspace {
           tabs: group.tabs.map((tab) => ({
             path: tab.file.path,
             mode: tab.mode,
+            ...(tab.diff
+              ? {
+                  diff: tab.diff.stage,
+                  ...(tab.diff.originalPath
+                    ? { originalPath: tab.diff.originalPath }
+                    : {}),
+                  ...tab.diff.state,
+                }
+              : {}),
           })),
-          active: group.active?.file.path ?? null,
+          active: group.active ? keyOf(group.active) : null,
         };
       }),
     };
@@ -493,6 +645,32 @@ export class Workspace {
         const group = this.makeGroup();
         ids.set(entry.id, group.id);
         for (const tab of entry.tabs) {
+          if (tab.diff) {
+            // Diffs can show deleted files, so they do not need a catalog entry.
+            const name = tab.path.split('/').at(-1)!;
+            this.makeTab(
+              {
+                path: tab.path,
+                name,
+                kind: /\.html?$/i.test(name) ? 'html' : 'text',
+                size: 0,
+              },
+              group,
+              'source',
+              {
+                stage: tab.diff,
+                originalPath: tab.originalPath,
+                state: {
+                  layout: tab.layout ?? DEFAULT_DIFF_STATE.layout,
+                  collapse: tab.collapse ?? DEFAULT_DIFF_STATE.collapse,
+                  ignoreTrimWhitespace:
+                    tab.ignoreTrimWhitespace ??
+                    DEFAULT_DIFF_STATE.ignoreTrimWhitespace,
+                },
+              },
+            );
+            continue;
+          }
           const file = byPath.get(tab.path);
           if (file)
             this.makeTab(
@@ -502,7 +680,7 @@ export class Workspace {
             );
         }
         group.active =
-          group.tabs.find((tab) => tab.file.path === entry.active) ??
+          group.tabs.find((tab) => keyOf(tab) === entry.active) ??
           group.tabs[0] ??
           null;
       }
@@ -542,27 +720,45 @@ export class Workspace {
       const active = group.active;
       group.control('no-tabs').hidden = !!group.tabs.length;
       group.control('empty-state').hidden = !!active;
-      group.control('current-path').textContent =
-        active?.file.path ?? 'Ready when you are';
-      group.control('current-path').title = active?.file.path ?? '';
+      const pathLabel = active?.diff
+        ? `${active.file.path} (${STAGE_LABELS[active.diff.stage].join(' ↔ ')})`
+        : (active?.file.path ?? 'Ready when you are');
+      group.control('current-path').textContent = pathLabel;
+      group.control('current-path').title = active ? pathLabel : '';
       for (const name of ['reload-file', 'split-right', 'split-down'])
         group.control<HTMLButtonElement>(name).disabled =
           !active || (name.startsWith('split-') && this.groups.size >= 32);
       group.control<HTMLButtonElement>('copy-path').disabled = !active;
-      group.control('open-file').hidden = !active;
-      group.control('download-file').hidden = !active;
-      if (active)
+      group.control('open-file').hidden = !active || !!active.diff;
+      group.control('download-file').hidden = !active || !!active.diff;
+      if (active && !active.diff)
         group.control<HTMLAnchorElement>('open-file').href = fileUrl(
           active.file,
           active.revision,
         );
-      if (active) {
+      if (active && !active.diff) {
         const download = group.control<HTMLAnchorElement>('download-file');
         download.href = fileUrl(active.file, active.revision, true);
         download.download = active.file.name;
       }
       group.control('preview-modes').hidden =
-        !active || !hasViewer(active.file);
+        !active || !!active.diff || !hasViewer(active.file);
+      group.control('open-changes').hidden =
+        !active || !!active.diff || !this.preferredChange(active.file.path);
+      group.control('diff-actions').hidden = !active?.diff;
+      const diffState = active?.diff?.state;
+      group
+        .control('diff-inline')
+        .setAttribute('aria-pressed', String(diffState?.layout === 'inline'));
+      group
+        .control('diff-collapse')
+        .setAttribute('aria-pressed', String(!!diffState?.collapse));
+      group
+        .control('diff-whitespace')
+        .setAttribute(
+          'aria-pressed',
+          String(!!diffState && !diffState.ignoreTrimWhitespace),
+        );
       group
         .control('viewer-mode')
         .setAttribute('aria-pressed', String(active?.mode === 'viewer'));
@@ -753,7 +949,7 @@ export class Workspace {
         if (event.clientX < strip.left + 24) group.tabbar.scrollLeft -= 12;
         if (event.clientX > strip.right - 24) group.tabbar.scrollLeft += 12;
         const tabs = group.tabs.filter(
-          (tab) => tab.file.path !== this.dragged?.file.path,
+          (tab) => !this.dragged || keyOf(tab) !== keyOf(this.dragged),
         );
         const index = tabs.findIndex((tab) => {
           const rect = tab.element.getBoundingClientRect();
@@ -786,7 +982,7 @@ export class Workspace {
     const box = this.measured.groups.get(target.group.id)!;
     if (target.index !== undefined) {
       const tabs = target.group.tabs.filter(
-        (tab) => tab.file.path !== this.dragged?.file.path,
+        (tab) => !this.dragged || keyOf(tab) !== keyOf(this.dragged),
       );
       const before = tabs[target.index]?.element.getBoundingClientRect();
       const after = tabs[target.index - 1]?.element.getBoundingClientRect();
