@@ -1,137 +1,162 @@
 # fzv
 
-プロジェクトのファイルを検索して、ブラウザで読むための読み取り専用ビューアです。ターミナルやコーディングエージェントで作業を続けながら、PDF、HTML、画像、ソースコード、Office文書をタブや分割画面で確認できます。
+[![npm](https://img.shields.io/npm/v/@aaa_iii/fzv)](https://www.npmjs.com/package/@aaa_iii/fzv)
+[![CI](https://github.com/iiii1224/fzv/actions/workflows/ci.yml/badge.svg)](https://github.com/iiii1224/fzv/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](https://github.com/iiii1224/fzv/blob/main/LICENSE)
 
-## 必要な環境
+English | [日本語](https://github.com/iiii1224/fzv/blob/main/README.ja.md)
 
-- Node.js 24 以降
-- 現行のデスクトップブラウザ
+A read-only browser viewer for finding and reading the files your coding agent produces, without opening an IDE. Switch between PDFs, HTML, images, source code, and Office documents in the same tabs and split panes.
 
-実行時に追加のnpmパッケージをインストールしません。配布パッケージにはUIと必要なアセットが含まれています。
+```console
+$ npx --yes @aaa_iii/fzv@latest --watch
 
-## 使い始める
+  fzv 0.1.1
+  Project  ~/dev/fzv
+  Viewer   http://127.0.0.1:29814/
+  Office   ibisOffice (~/.local/bin/ibisOffice)
 
-npmレジストリから起動します。プロジェクトのディレクトリで実行してください。
-
-```bash
-npx --yes @aaa_iii/fzv@latest --root .
+  Press Ctrl+C to stop.
 ```
 
-自動再読み込みを有効にするには `--watch` を付けます。
+Open the printed URL in your browser and press `/` to find a file.
+
+## Why fzv
+
+fzv is built for keeping an eye on generated output while you keep directing an agent from the terminal.
+
+- **One `npx` command**: nothing is downloaded at runtime. The UI, PDF.js, and fonts ship inside the package, and there is no install-time build.
+- **One workflow for every format**: PDFs, Markdown, and images all use the same tabs, splits, and keys.
+- **Keyboard-driven**: `/` for fuzzy search, `hjkl` to scroll, `f` to jump to any link or button on screen.
+- **Never modifies files**: there is no write path, and requests outside the project root are rejected.
+
+**What it does not do**: edit files, search file contents, honor `.gitignore`, preview legacy Office formats (`.doc`, `.xls`, `.ppt`), or serve with authentication. Pair it with an editor or `rg` for editing and full-text search.
+
+## Requirements
+
+- Node.js 24 or later
+- A current desktop browser
+- For Office documents only: [ibisOffice](https://github.com/ibisjp/ibis-office) or [LibreOffice](https://www.libreoffice.org/)
+
+## Start
 
 ```bash
-npx --yes @aaa_iii/fzv@latest --root . --watch
+# Open the current directory
+npx --yes @aaa_iii/fzv@latest
+
+# Watch for changes and refresh the search index and open tabs
+npx --yes @aaa_iii/fzv@latest --watch
+
+# Open another directory
+npx --yes @aaa_iii/fzv@latest --root ~/projects/example
 ```
 
-ターミナルに表示されたURLをブラウザで開きます。終了するには `Ctrl+C` を押します。
+Press `Ctrl+C` to stop.
 
-`--port` を指定しない場合は、プロジェクトのパスから決まる 20000〜29999 番のポートで待ち受けます。同じプロジェクトなら毎回同じURLになるので、ブラウザに保存されたタブ・分割・テーマが次回の起動でも復元されます。そのポートが使用中のときは空きポートで起動し、その旨をターミナルに表示します。この場合、URLが変わるため前回のタブ・分割・テーマは復元されません。以前の版（既定ポート `8000`）で保存した状態を使い続けるには `--port 8000` を指定します。
+The port is derived from the project path, in the range 20000–29999. The same project always gets the same URL, so the tabs, splits, and theme saved in your browser come back on the next run. If that port is taken, fzv starts on a free port and prints a warning. The URL then differs, so the previous session is not restored.
 
-## コマンドラインオプション
+## Usage
 
-| オプション                | 既定値                 | 説明                                                                               |
-| ------------------------- | ---------------------- | ---------------------------------------------------------------------------------- |
-| `--root PATH`             | カレントディレクトリ   | 閲覧するプロジェクトのルート                                                       |
-| `--host HOST`             | `127.0.0.1`            | 待ち受けアドレス                                                                   |
-| `--port PORT`             | プロジェクトごとに固定 | ポート番号。`0` を指定すると空きポートを使う。明示したポートが使用中なら起動しない |
-| `--watch`                 | 無効                   | プロジェクト内の変更後に検索対象と表示を更新                                       |
-| `--allow-html-network`    | 無効                   | HTMLプレビューで外部スクリプトとネットワーク通信を許可                             |
-| `--office-converter PATH` | 自動検出               | Office文書をPDFに変換する ibisOffice または LibreOffice の実行ファイル             |
-| `-h`, `--help`            | —                      | ヘルプを表示                                                                       |
-| `-v`, `--version`         | —                      | バージョンを表示                                                                   |
+### Find files
 
-別のプロジェクトやポートで起動する例:
+Press `/` or click "Find a file" to open search. With an empty query, it lists the files and directories at the project root. Selecting a directory moves into it; typing fuzzy-matches paths. Space-separated terms narrow results to paths that contain all of them.
+
+The file list is rescanned in the background each time search opens, so files created after the page loaded show up too. While the rescan runs, you can keep searching the previous list.
+
+Hidden files and directories, `node_modules`, and `__pycache__` are not listed.
+
+### Tabs and splits
+
+Files open in tabs. Drag a tab to reorder it, or drop it on any edge to split the view. Hold `Ctrl` (`Option` on macOS) while dragging to copy the tab instead of moving it. Up to 32 split panes are supported, and the dividers can be dragged to resize them.
+
+Open tabs, the split layout, and view modes are saved in the browser and restored on reload.
+
+### Supported formats
+
+| Format   | Extensions                                                                                             | View                                             |
+| -------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------ |
+| PDF      | `.pdf`                                                                                                 | Text selection, in-document search, zoom         |
+| HTML     | `.html` `.htm`                                                                                         | Rendered in a sandbox; switchable to source      |
+| Markdown | `.md`                                                                                                  | Rendered; switchable to source                   |
+| Image    | `.png` `.jpg` `.jpeg` `.gif` `.webp` `.avif` `.bmp` `.svg` `.ico`                                      | Zoom and pan                                     |
+| Office   | `.docx` `.xlsx` `.pptx`                                                                                | Converted to PDF                                 |
+| Text     | `.ts` `.js` `.py` `.rs` `.go` `.json` `.yaml` `.toml` `.tex` `.csv`, and more; `Makefile` `Dockerfile` | Source with line numbers and syntax highlighting |
+
+Files are limited to 20 MiB each. "Download" saves the current file in its original format.
+
+## Keyboard shortcuts
+
+| Keys                     | Action                                        |
+| ------------------------ | --------------------------------------------- |
+| `/`                      | Open file search                              |
+| `?`                      | Show all shortcuts                            |
+| `f`                      | Label links and buttons; type a label to jump |
+| `h` `j` `k` `l`          | Scroll the preview                            |
+| `gg` / `G`               | Go to the top / bottom                        |
+| `r`                      | Reload the current file                       |
+| `Alt+J` / `Alt+K`        | Next / previous tab in the same pane          |
+| `Ctrl/Cmd+\`             | Split right                                   |
+| `Ctrl/Cmd+Shift+\`       | Split down                                    |
+| `Ctrl/Cmd+1`–`9`         | Focus a pane                                  |
+| `Ctrl/Cmd+F`             | Search within a PDF                           |
+| `Ctrl/Cmd` + `+` `-` `0` | Zoom images and PDFs (`0` fits to the view)   |
+| `Escape`                 | Close search, help, or labels                 |
+
+Text fields keep their normal typing behavior. Shortcuts reserved by the browser take precedence.
+
+## Office documents
+
+`.docx`, `.xlsx`, and `.pptx` files are converted to PDF with a local ibisOffice or LibreOffice before display. At startup, fzv searches `PATH` for `ibisOffice`, `soffice`, and `libreoffice`, in that order, and also checks `/Applications` on macOS. The converter it finds is shown on the `Office` line of the startup message.
+
+If the converter lives somewhere else, pass its path with `--office-converter`:
 
 ```bash
-npx --yes @aaa_iii/fzv@latest --root ~/projects/example --port 8000 --watch
+npx --yes @aaa_iii/fzv@latest --office-converter ~/Applications/ibisOffice-0.8.4-Linux.AppImage
 ```
 
-## ファイルを探して読む
+Executables whose names start with `soffice` or `libreoffice` are run as LibreOffice; anything else is run as ibisOffice. Converted PDFs are cached by file content and regenerated when the content changes.
 
-`/` キーまたは「Find a file」から検索を開きます。空の検索欄には現在のディレクトリ直下の項目が表示されます。ディレクトリを選ぶとその中へ移動し、文字を入力するとパスをあいまい検索します。検索語をスペースで区切ると、すべての語を含むパスを探します。
+## Options
 
-ファイルはタブで開きます。タブは並べ替えられ、ドラッグして上下左右に画面を分割したり、別の領域へ移動したりできます。分割領域はドラッグでサイズを調整でき、最大32個まで作成できます。タブ、分割、選択中のファイルはブラウザに保存され、再読み込み後に復元されます。
+| Option                    | Default                 | Description                                                           |
+| ------------------------- | ----------------------- | --------------------------------------------------------------------- |
+| `--root PATH`             | Current directory       | Project root to open                                                  |
+| `--host HOST`             | `127.0.0.1`             | Address to listen on                                                  |
+| `--port PORT`             | Derived from the path   | `0` picks a free port. An explicit port that is in use stops startup  |
+| `--watch`                 | Off                     | Watch for changes and refresh the search index and open tabs          |
+| `--allow-html-network`    | Off                     | Let HTML previews load external scripts and make network requests     |
+| `--office-converter PATH` | Auto-detected on `PATH` | ibisOffice or LibreOffice executable used to convert Office documents |
+| `-h`, `--help`            |                         | Show help                                                             |
+| `-v`, `--version`         |                         | Show the version                                                      |
 
-### プレビュー形式
+## Security
 
-- PDF: ページ表示、文字選択、文書内検索、ズーム
-- HTML (`.html`, `.htm`): Viewer / Source 切り替え
-- 画像: PNG、JPEG、GIF、WebP、AVIF、BMP、SVG、ICO。拡大・縮小・移動
-- Office文書 (`.docx`, `.xlsx`, `.pptx`): PDFに変換し、PDFと同じ表示。ダウンロードは元のファイル
-- テキスト: Markdown、JSON、JavaScript、TypeScript、Python、Rust、Go、YAML、CSVなど。ソース表示とシンタックスハイライト
-
-Markdownは整形表示とソース表示を切り替えられます。HTML、Markdown、PDF以外のテキストはソース表示で開きます。1ファイルの上限は20 MiBです。
-
-検索画面を開くたびにファイル一覧を裏で取り直すので、ページを開いたあとに作られたファイルも検索できます。取り直しの間は直前の一覧で検索でき、届いた時点で結果が更新されます。`--watch` を使うと、対象プロジェクトの変更後に検索対象のファイル一覧と変更されたファイルのタブを自動で更新します。更新中も検索は直前の一覧で使えます。
-
-### Office文書のプレビュー
-
-Office文書の表示には、[ibisOffice](https://github.com/ibisjp/ibis-office) または [LibreOffice](https://www.libreoffice.org/) が必要です。fzvは起動時に `PATH` から `ibisOffice`、`soffice`、`libreoffice` の順に探し、見つかった変換ソフトを起動メッセージの `Office` 行に表示します。macOSでは `/Applications` 内のアプリも探します。
-
-ibisOfficeのLinux版AppImageは、`ibisOffice` という名前で `PATH` に置くか、パスを直接指定します。
+By default fzv listens on `127.0.0.1` only, so it is reachable from this machine alone. To open it from another device on your LAN, set the listen address explicitly:
 
 ```bash
-npx --yes @aaa_iii/fzv@latest --root . --office-converter ~/Applications/ibisOffice-0.8.4-Linux.AppImage
+npx --yes @aaa_iii/fzv@latest --host 0.0.0.0 --port 8000
 ```
 
-実行ファイル名が `soffice` または `libreoffice` で始まる場合はLibreOfficeとして、それ以外はibisOfficeとして呼び出します。変換結果は内容ごとにキャッシュされ、ファイルが変わると変換し直します。変換ソフトが見つからない場合は、プレビューに案内を表示します。元のファイルは「Download」から取得できます。
+**Warning**: there is no authentication and no TLS. Anyone who can connect can read the viewable files in the project. Use it only on networks you trust.
 
-## キーボード操作
+- The server accepts only GET and HEAD and rejects cross-origin API requests.
+- HTML previews run in a sandbox and cannot reach the fzv page or its storage. Inline scripts run, but external scripts and API requests are blocked by default. Images, CSS, and fonts may still load. Use `--allow-html-network` only for HTML you trust.
+- Office documents are copied from the validated file into a temporary directory before conversion. The converter never reads project paths directly. The temporary directory is removed on exit.
 
-| キー                | 操作                                               |
-| ------------------- | -------------------------------------------------- |
-| `/`                 | ファイル検索を開く                                 |
-| `↑` / `↓`, `Enter`  | 検索結果を選択して開く                             |
-| `Escape`            | 検索やヘルプを閉じる、ヒントを解除                 |
-| `?`                 | キーボード操作一覧を表示                           |
-| `f`                 | 画面上のリンクや操作部品にジャンプするヒントを表示 |
-| `h` `j` `k` `l`     | プレビューをスクロール                             |
-| `gg` / `G`          | プレビューの先頭 / 末尾へ移動                      |
-| `r`                 | 選択中のプレビューを再取得                         |
-| `Alt+J` / `Alt+K`   | 現在の領域で次 / 前のタブへ移動                    |
-| `Ctrl/Cmd+\`        | 右に分割                                           |
-| `Ctrl/Cmd+Shift+\`  | 下に分割                                           |
-| `Ctrl/Cmd+1` 〜 `9` | 分割領域へフォーカス                               |
+## Status
 
-ブラウザが `Ctrl+Tab` をアプリへ渡す場合は、タブ切り替えにも使えます。ブラウザが予約しているキー操作はブラウザ側が優先されます。入力欄では文字入力を優先します。
+fzv is in 0.x development. Options and shortcuts may change in minor releases.
 
-## セキュリティとアクセス範囲
-
-サーバーは既定でこのマシンの `127.0.0.1` だけに接続を受け付けます。LANの別端末から開く場合は、たとえば次のように起動します。
-
-```bash
-npx --yes @aaa_iii/fzv@latest --root . --host 0.0.0.0 --port 8000
-```
-
-ネットワーク公開には認証もTLSもありません。接続できる端末からプロジェクト内の公開対象ファイルを閲覧できます。信頼できるネットワークでのみ使用してください。
-
-fzvはファイルを書き換えず、ルート外へのパスアクセスを拒否します。隠しファイルとディレクトリ、`node_modules`、`__pycache__` は表示・配信しません。`.gitignore` は解釈しません。
-
-Office文書は、検証済みのファイルの内容を一時ディレクトリへコピーしてから変換ソフトに渡します。変換ソフトはこのマシンで実行され、プロジェクトのパスを直接読みません。一時ディレクトリは終了時に削除します。
-
-HTMLプレビューはsandbox内で動作します。インラインスクリプトは実行できますが、既定では外部スクリプトの読み込みとAPI通信を許可しません。画像、CSS、フォントなどはHTMLのプレビュー方針に従って読み込まれる場合があります。信頼できるHTMLで外部スクリプトや通信が必要な場合だけ `--allow-html-network` を指定してください。この設定はHTMLからネットワークへの接続を許可します。
-
-## ソースから実行する
+## Run from source
 
 ```bash
 npm ci
 npm run build
-node dist/server/cli.js --root . --watch
+node dist/server/cli.js --watch
 ```
 
-開発中にUIの変更を確認する場合は、サーバーを起動したまま別のターミナルで次を実行し、Viteが表示するURLを開きます。
+To work on the UI, keep the server running, run `npm run dev:ui` in another terminal, and open the URL Vite prints. Run the tests with `npm test` and `npm run test:browser`.
 
-```bash
-npm run dev:ui
-```
+## License
 
-主な検証コマンド:
-
-```bash
-npm test
-npm run test:browser
-```
-
-## ライセンス
-
-MIT License。依存コンポーネントのライセンスと検索実装の帰属情報は [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) に記載しています。
+[MIT](https://github.com/iiii1224/fzv/blob/main/LICENSE). Licenses for bundled components and the attribution for the fuzzy search implementation are in [THIRD_PARTY_NOTICES.md](https://github.com/iiii1224/fzv/blob/main/THIRD_PARTY_NOTICES.md).
