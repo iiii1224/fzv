@@ -28,3 +28,8 @@ export function viewerUrls(
       `http://${address.includes(':') ? `[${address}]` : address}:${port}/`,
   );
 }
+
+// A stable port per project keeps the browser origin, and its saved session, across restarts.
+export function projectPort(projectId: string): number {
+  return 20000 + (Number.parseInt(projectId.slice(0, 8), 16) % 10000);
+}
