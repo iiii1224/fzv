@@ -19,6 +19,7 @@ import { initializeTheme } from './theme.js';
 import { installNavigation } from '../navigation.js';
 import { Sidebar } from './sidebar.js';
 import { SourceControlView } from './scm.js';
+import { ExplorerView } from './explorer.js';
 
 function byId<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
@@ -243,6 +244,7 @@ async function refreshGit(): Promise<void> {
     const changed = gitSnapshot !== '' && snapshot !== gitSnapshot;
     gitSnapshot = snapshot;
     workspace.setGitChanges(status.available ? status.changes : []);
+    explorer.setGitChanges(status.available ? status.changes : []);
     sourceControl.setStatus(status);
     const count = sourceControl.count;
     sidebar.setBadge(
@@ -310,6 +312,7 @@ function applyIndex(
   appliedSequence = sequence;
   files = data.files;
   index = new FuzzyIndex([...data.directories, ...files]);
+  explorer.setEntries(files, data.directories);
   return true;
 }
 
@@ -374,6 +377,7 @@ async function loadIndex(
         );
       }
       projectId = project.id;
+      explorer.setProject(project.id, project.name);
       gitEnabled = project.git === true;
       if (gitEnabled) sidebar.add(sourceControlView);
       void refreshGit();
@@ -401,6 +405,7 @@ async function loadIndex(
       const data = (await response.json()) as FileIndex;
       if (!applyIndex(sequence, data)) return;
       projectId = data.project.id;
+      explorer.setProject(data.project.id, data.project.name);
       const available = new Set(data.files.map((file) => file.path));
       byId('project-name').textContent = data.project.name;
       byId('status-project').textContent = data.project.name;
@@ -497,9 +502,14 @@ window.addEventListener('keydown', (event) => {
     workspace.cycle(event.key.toLowerCase() === 'j' ? 1 : -1);
     return;
   }
-  // VS Code's view shortcuts: Ctrl+Shift+G for Source Control, Ctrl+B for the side bar.
+  // VS Code's view shortcuts: Ctrl+Shift+E / G for Explorer / Source Control, Ctrl+B for the side bar.
   if ((event.ctrlKey || event.metaKey) && !event.altKey && !searchPanel.open) {
     const key = event.key.toLowerCase();
+    if (event.shiftKey && key === 'e') {
+      event.preventDefault();
+      sidebar.toggleFocus('explorer');
+      return;
+    }
     if (event.shiftKey && key === 'g' && gitEnabled) {
       event.preventDefault();
       sidebar.toggleFocus('scm');
@@ -615,6 +625,13 @@ const navigation = installNavigation({
     );
   },
 });
+const explorer = new ExplorerView({
+  openFile: (file) => {
+    workspace.open(file);
+    sidebar.afterOpen();
+  },
+  refresh: () => void loadIndex(),
+});
 const sourceControl = new SourceControlView({
   openChange: (change) => {
     workspace.openDiff(change);
@@ -655,6 +672,10 @@ const workspace = new Workspace(
     byId('tab-count').textContent =
       `${count} open tab${count === 1 ? '' : 's'}`;
     renderResults();
+    // Like explorer.autoReveal; staged diffs show index content, not the file.
+    explorer.reveal(
+      active && active.diff?.stage !== 'index' ? active.file.path : null,
+    );
     sourceControl.setActive(
       active ? tabKey(active.file.path, active.diff) : null,
     );
@@ -663,6 +684,15 @@ const workspace = new Workspace(
   (text, label) => void copyToClipboard(text, label),
   (path) => void openPath(path),
 );
+sidebar.add({
+  id: 'explorer',
+  title: 'Explorer',
+  icon: 'files',
+  keybinding: 'Ctrl+Shift+E',
+  element: explorer.element,
+  actions: explorer.actions,
+  focus: () => explorer.focus(),
+});
 byId('status-branch').addEventListener('click', () => sidebar.show('scm'));
 window.addEventListener('focus', () => void refreshGit());
 window.addEventListener('message', (event) => {

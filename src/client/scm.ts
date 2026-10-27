@@ -1,6 +1,7 @@
 import type { GitChange, GitStatus } from '../shared.js';
 import { fileIcon, icon } from './icons.js';
 import { tabKey } from './session.js';
+import { handleTreeKey } from './tree.js';
 
 type GroupId = 'merge' | 'index' | 'workingTree';
 interface Group {
@@ -40,7 +41,7 @@ export function statusText(change: GitChange): string {
       return 'Conflict';
   }
 }
-function statusColor(change: GitChange): string {
+export function statusColor(change: GitChange): string {
   switch (change.status) {
     case 'M':
       return change.stage === 'index' ? 'stage-modified' : 'modified';
@@ -86,7 +87,11 @@ export class SourceControlView {
     this.message.className = 'sidebar-message';
     this.message.textContent = 'Loading changes…';
     this.element.append(this.message, this.tree);
-    this.tree.addEventListener('keydown', (event) => this.keydown(event));
+    this.tree.addEventListener('keydown', (event) =>
+      handleTreeKey(event, this.tree, (row, expanded) =>
+        this.toggle(row.dataset.group as GroupId, expanded),
+      ),
+    );
     this.tree.addEventListener('focusin', (event) => {
       const row = (event.target as HTMLElement).closest<HTMLElement>(
         '.scm-row',
@@ -279,57 +284,5 @@ export class SourceControlView {
   private setFocused(row: HTMLElement): void {
     this.focusedKey = row.dataset.key ?? null;
     for (const item of this.rows()) item.tabIndex = item === row ? 0 : -1;
-  }
-
-  private keydown(event: KeyboardEvent): void {
-    const rows = this.rows();
-    const row = (event.target as HTMLElement).closest<HTMLElement>('.scm-row');
-    if (!row || event.altKey || event.ctrlKey || event.metaKey) return;
-    const index = rows.indexOf(row);
-    const move = (next: HTMLElement | undefined) => {
-      if (!next) return;
-      event.preventDefault();
-      this.setFocused(next);
-      next.focus();
-    };
-    const group = row.dataset.group as GroupId;
-    const isGroup = row.classList.contains('scm-group');
-    switch (event.key) {
-      case 'ArrowDown':
-        move(rows[index + 1]);
-        break;
-      case 'ArrowUp':
-        move(rows[index - 1]);
-        break;
-      case 'Home':
-        move(rows[0]);
-        break;
-      case 'End':
-        move(rows.at(-1));
-        break;
-      case 'ArrowLeft':
-        event.preventDefault();
-        if (isGroup) this.toggle(group, false);
-        else
-          move(
-            rows.find(
-              (item) =>
-                item.classList.contains('scm-group') &&
-                item.dataset.group === group,
-            ),
-          );
-        break;
-      case 'ArrowRight':
-        if (isGroup) {
-          event.preventDefault();
-          this.toggle(group, true);
-        }
-        break;
-      case 'Enter':
-      case ' ':
-        event.preventDefault();
-        row.click();
-        break;
-    }
   }
 }

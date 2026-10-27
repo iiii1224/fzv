@@ -65,6 +65,10 @@ The file list is rescanned in the background each time search opens, so files cr
 
 Hidden files and directories, `node_modules`, and `__pycache__` are not listed.
 
+### Side bar
+
+The activity bar on the left switches the side bar between the Explorer and, in git repositories, Source Control. The Explorer shows the same files as search as a folder tree, with git status colors and letters; it follows the active tab and remembers expanded folders. Click the active icon or press `Ctrl/Cmd+B` to hide the side bar, and drag its edge to resize it. In narrow windows it opens over the editor.
+
 ### Tabs and splits
 
 Files open in tabs. Drag a tab to reorder it, or drop it on any edge to split the view. Hold `Ctrl` (`Option` on macOS) while dragging to copy the tab instead of moving it. Up to 32 split panes are supported, and the dividers can be dragged to resize them.
@@ -109,6 +113,7 @@ The Source Control view in the side bar lists changes like VS Code: "Staged Chan
 | `Ctrl/Cmd+F`             | Search within a PDF                           |
 | `Ctrl/Cmd` + `+` `-` `0` | Zoom images and PDFs (`0` fits to the view)   |
 | `]c` / `[c`              | Next / previous change in a diff              |
+| `Ctrl/Cmd+Shift+E`       | Show the Explorer                             |
 | `Ctrl/Cmd+Shift+G`       | Show Source Control                           |
 | `Ctrl/Cmd+B`             | Show / hide the side bar                      |
 | `Escape`                 | Close search, help, or labels                 |

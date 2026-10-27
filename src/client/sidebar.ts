@@ -92,10 +92,10 @@ export class Sidebar {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'activity-item';
-    button.setAttribute('role', 'tab');
     button.setAttribute('aria-label', view.title);
     button.title = `${view.title} (${view.keybinding})`;
     button.dataset.view = view.id;
+    button.setAttribute('aria-pressed', 'false');
     const badge = document.createElement('span');
     badge.className = 'activity-badge';
     badge.hidden = true;
@@ -170,8 +170,6 @@ export class Sidebar {
     view.element.hidden = false;
     this.title.textContent = view.title;
     this.actions.replaceChildren(...(view.actions ?? []));
-    for (const [id, button] of this.buttons)
-      button.setAttribute('aria-selected', String(id === view.id));
     if (persist) this.save({ view: view.id });
   }
 
@@ -181,8 +179,12 @@ export class Sidebar {
     this.sidebar.hidden = !visible;
     this.sash.hidden = !visible;
     this.activityBar.classList.toggle('sidebar-hidden', !visible);
-    for (const [id, button] of this.buttons)
-      button.classList.toggle('checked', visible && id === this.active?.id);
+    // Each item toggles its view, so pressed means "shown", like VS Code's checked state.
+    for (const [id, button] of this.buttons) {
+      const checked = visible && id === this.active?.id;
+      button.classList.toggle('checked', checked);
+      button.setAttribute('aria-pressed', String(checked));
+    }
     // Leaving a hidden side bar would drop focus on the body.
     if (!visible && hadFocus) document.getElementById('main')?.focus();
     if (persist) this.save({ visible });

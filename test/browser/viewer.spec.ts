@@ -619,7 +619,9 @@ test('resizes columns and rows by pointer and keyboard, saves ratios, and suppor
   await page.mouse.move(box!.x + 130, box!.y + box!.height / 2, { steps: 8 });
   await page.mouse.up();
   const width = (await editorGroup(page, 1).boundingBox())!.width;
-  expect(width).toBeGreaterThan(700);
+  // The side bar shares the window, so compare with the editor area's midpoint.
+  const area = (await page.locator('#preview').boundingBox())!.width;
+  expect(width).toBeGreaterThan(area / 2 + 100);
   await page.reload();
   await expect(page.locator('.editor-group')).toHaveCount(2);
   expect((await editorGroup(page, 1).boundingBox())!.width).toBeCloseTo(
