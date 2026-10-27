@@ -43,7 +43,7 @@ async function executable(filename: string): Promise<boolean> {
   }
 }
 
-async function which(
+export async function which(
   name: string,
   env: NodeJS.ProcessEnv,
 ): Promise<string | undefined> {

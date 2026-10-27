@@ -3,7 +3,11 @@ import { parseArgs } from 'node:util';
 import { createViewer } from './server.js';
 import { PRODUCT_NAME, VERSION } from '../shared.js';
 import { projectPort, viewerUrls } from './network.js';
-import { findOfficeConverter, OFFICE_CONVERTER_NAMES } from './office.js';
+import {
+  findOfficeConverter,
+  OFFICE_CONVERTER_NAMES,
+  which,
+} from './office.js';
 
 const HELP = `${PRODUCT_NAME} — the file viewer for agent-driven development
 
@@ -56,12 +60,14 @@ async function main(): Promise<void> {
   )
     throw new Error('--port must be an integer between 0 and 65535.');
   const officeConverter = await findOfficeConverter(values['office-converter']);
+  const git = (await which('git', process.env)) ?? null;
   const { server, catalog } = await createViewer({
     root: values.root ?? process.cwd(),
     host: values.host,
     watch: values.watch,
     allowHtmlNetwork: values['allow-html-network'],
     officeConverter,
+    git,
   });
   server.on('watchError', (error: Error) => {
     console.error(`${PRODUCT_NAME}: file watching stopped: ${error.message}`);
@@ -101,7 +107,7 @@ async function main(): Promise<void> {
       ? `${OFFICE_CONVERTER_NAMES[officeConverter.kind]} (${officeConverter.command})`
       : 'unavailable; install ibisOffice or LibreOffice';
     console.log(
-      `\n  ${PRODUCT_NAME} ${VERSION}\n  Project  ${catalog.root}\n${urls.map((url) => `  Viewer   ${url}`).join('\n')}\n  Office   ${office}\n\n  Press Ctrl+C to stop.\n`,
+      `\n  ${PRODUCT_NAME} ${VERSION}\n  Project  ${catalog.root}\n${urls.map((url) => `  Viewer   ${url}`).join('\n')}\n  Office   ${office}\n  Git      ${git ?? 'unavailable; install git for Source Control'}\n\n  Press Ctrl+C to stop.\n`,
     );
   });
   server.listen(port, values.host);

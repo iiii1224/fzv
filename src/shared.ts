@@ -20,6 +20,7 @@ export interface ProjectInfo {
   name: string;
   maxFileSize: number;
   watch?: boolean;
+  git?: boolean;
 }
 export interface FileIndex {
   project: ProjectInfo;
@@ -30,3 +31,19 @@ export interface FileIndex {
 export interface ProjectChange {
   paths: string[] | null;
 }
+
+/** `index` compares HEAD with the index; `worktree` compares the index with files. */
+export type GitStage = 'index' | 'worktree';
+/** Porcelain status letters, as shown by VS Code's Source Control view. */
+export type GitStatusCode = 'M' | 'A' | 'D' | 'R' | 'C' | 'T' | 'U' | '?';
+export interface GitChange {
+  path: string;
+  /** Source path of a rename or copy, when it is inside the project. */
+  originalPath?: string;
+  stage: GitStage;
+  status: GitStatusCode;
+  kind: PreviewKind | null;
+}
+export type GitStatus =
+  | { available: false }
+  | { available: true; branch: string | null; changes: GitChange[] };

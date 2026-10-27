@@ -13,6 +13,7 @@ import {
   isVisibleRelative,
 } from './catalog.js';
 import type { OpenProjectFile } from './catalog.js';
+import { GitRepository } from './git.js';
 import { OfficeConversionError, OfficeRenderer } from './office.js';
 import type { OfficeConverter } from './office.js';
 import { installNavigation } from '../navigation.js';
@@ -184,6 +185,8 @@ export interface ViewerOptions {
   allowHtmlNetwork?: boolean;
   watch?: boolean;
   officeConverter?: OfficeConverter | null;
+  /** git executable for the Source Control view; null disables it. */
+  git?: string | null;
 }
 export const OFFICE_UNAVAILABLE =
   'Office previews need ibisOffice or LibreOffice. Install one and restart fzv, or pass --office-converter PATH.';
@@ -197,6 +200,7 @@ export async function createViewer(options: ViewerOptions) {
   const office = options.officeConverter
     ? new OfficeRenderer(options.officeConverter)
     : undefined;
+  const git = options.git ? new GitRepository(options.git, catalog.root) : null;
   const eventClients = new Set<ServerResponse>();
   let reloadTimer: NodeJS.Timeout | undefined;
   // Unknown or excessive changes are sent as null so clients refresh every tab.
@@ -337,7 +341,11 @@ export async function createViewer(options: ViewerOptions) {
           reply(req, res, 400, 'text/plain', 'Too many file paths\n');
           return;
         }
-        const project = { ...catalog.project, watch: watchEnabled };
+        const project = {
+          ...catalog.project,
+          watch: watchEnabled,
+          git: git !== null,
+        };
         const body =
           url.pathname === '/api/project'
             ? project
@@ -350,6 +358,37 @@ export async function createViewer(options: ViewerOptions) {
           200,
           'application/json; charset=utf-8',
           JSON.stringify(body),
+        );
+        return;
+      }
+      if (
+        url.pathname === '/api/git/status' ||
+        url.pathname === '/api/git/file'
+      ) {
+        if (req.headers.origin && req.headers.origin !== origin.origin) {
+          reply(req, res, 403, 'text/plain', 'Origin not allowed\n');
+          return;
+        }
+        if (!git) throw new FileUnavailable();
+        if (url.pathname === '/api/git/status') {
+          reply(
+            req,
+            res,
+            200,
+            'application/json; charset=utf-8',
+            JSON.stringify(await git.status()),
+          );
+          return;
+        }
+        const revision = url.searchParams.get('revision');
+        if (revision !== 'HEAD' && revision !== 'index')
+          throw new FileUnavailable();
+        reply(
+          req,
+          res,
+          200,
+          'text/plain; charset=utf-8',
+          await git.read(url.searchParams.get('path') ?? '', revision),
         );
         return;
       }
