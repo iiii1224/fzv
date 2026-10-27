@@ -11,7 +11,7 @@
 ```console
 $ npx --yes @aaa_iii/fzv@latest --watch
 
-  fzv 0.1.1
+  fzv 0.2.0
   Project  ~/dev/fzv
   Viewer   http://127.0.0.1:29814/
   Office   ibisOffice (~/.local/bin/ibisOffice)
