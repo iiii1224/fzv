@@ -11,7 +11,7 @@ A read-only browser viewer for finding and reading the files your coding agent p
 ```console
 $ npx --yes @aaa_iii/fzv@latest --watch
 
-  fzv 0.2.0
+  fzv 0.3.0
   Project  ~/dev/fzv
   Viewer   http://127.0.0.1:29814/
   Office   ibisOffice (~/.local/bin/ibisOffice)
