@@ -24,7 +24,7 @@ interface FindUpdate {
 
 export async function mountPdf(
   pane: HTMLElement,
-  url: string,
+  source: string | Uint8Array,
   parentSignal: AbortSignal,
   isActive: () => boolean,
 ): Promise<void> {
@@ -237,7 +237,7 @@ export async function mountPdf(
         : `${matchesCount.current} / ${matchesCount.total}`;
   });
   const loading = getDocument({
-    url,
+    ...(typeof source === 'string' ? { url: source } : { data: source }),
     cMapUrl: '/_fzv/pdfjs/cmaps/',
     cMapPacked: true,
     standardFontDataUrl: '/_fzv/pdfjs/standard_fonts/',

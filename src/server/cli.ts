@@ -3,20 +3,24 @@ import { parseArgs } from 'node:util';
 import { createViewer } from './server.js';
 import { PRODUCT_NAME, VERSION } from '../shared.js';
 import { viewerUrls } from './network.js';
+import { findOfficeConverter, OFFICE_CONVERTER_NAMES } from './office.js';
 
 const HELP = `${PRODUCT_NAME} — the file viewer for agent-driven development
 
-Usage: ${PRODUCT_NAME} [--root PATH] [--host HOST] [--port PORT] [--watch] [--allow-html-network]
+Usage: ${PRODUCT_NAME} [--root PATH] [--host HOST] [--port PORT] [--watch] [--allow-html-network] [--office-converter PATH]
 
   --root PATH   Project directory (default: current working directory)
   --host HOST   Bind address (default: 127.0.0.1)
   --port PORT   HTTP port, 0 for a free port (default: 8000)
   --watch       Refresh files and previews when project files change
   --allow-html-network  Allow HTML previews to run remote scripts and make network requests
+  --office-converter PATH  ibisOffice or LibreOffice executable for Office previews
+                (default: ibisOffice, then soffice/libreoffice, found on PATH)
   -h, --help    Show this help
   -v, --version Show version
 
-Find and preview PDF, HTML, images, and text. Files are read-only.
+Find and preview PDF, HTML, images, text, and Office documents
+(.docx, .xlsx, .pptx, converted to PDF). Files are read-only.
 Use --host 0.0.0.0 explicitly to allow devices on your network.
 `;
 
@@ -30,6 +34,7 @@ async function main(): Promise<void> {
       port: { type: 'string', default: '8000' },
       watch: { type: 'boolean', default: false },
       'allow-html-network': { type: 'boolean', default: false },
+      'office-converter': { type: 'string' },
       help: { type: 'boolean', short: 'h' },
       version: { type: 'boolean', short: 'v' },
     },
@@ -46,11 +51,13 @@ async function main(): Promise<void> {
   }
   if (!/^\d+$/.test(values.port!) || Number(values.port) > 65535)
     throw new Error('--port must be an integer between 0 and 65535.');
+  const officeConverter = await findOfficeConverter(values['office-converter']);
   const { server, catalog } = await createViewer({
     root: values.root ?? process.cwd(),
     host: values.host,
     watch: values.watch,
     allowHtmlNetwork: values['allow-html-network'],
+    officeConverter,
   });
   server.on('watchError', (error: Error) => {
     console.error(`${PRODUCT_NAME}: file watching stopped: ${error.message}`);
@@ -69,8 +76,11 @@ async function main(): Promise<void> {
     const address = server.address();
     if (!address || typeof address === 'string') return;
     const urls = viewerUrls(values.host!, address.port);
+    const office = officeConverter
+      ? `${OFFICE_CONVERTER_NAMES[officeConverter.kind]} (${officeConverter.command})`
+      : 'unavailable; install ibisOffice or LibreOffice';
     console.log(
-      `\n  ${PRODUCT_NAME} ${VERSION}\n  Project  ${catalog.root}\n${urls.map((url) => `  Viewer   ${url}`).join('\n')}\n\n  Press Ctrl+C to stop.\n`,
+      `\n  ${PRODUCT_NAME} ${VERSION}\n  Project  ${catalog.root}\n${urls.map((url) => `  Viewer   ${url}`).join('\n')}\n  Office   ${office}\n\n  Press Ctrl+C to stop.\n`,
     );
   });
   const stop = () => {

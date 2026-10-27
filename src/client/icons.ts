@@ -17,12 +17,18 @@ export function fileIcon(file: ProjectEntry): HTMLElement {
           ? 'file-media'
           : file.kind === 'html'
             ? 'file-code'
-            : /\.md$/i.test(file.name)
-              ? 'markdown'
-              : /\.(?:[cm]?js|jsx|ts|tsx|py|rs|go|c|cc|cpp|h|hpp|cs|java|rb|lua|sh|json|ya?ml|toml|css|scss|xml|sql|tex|sty|bib|bst)$/i.test(
-                    file.name,
-                  ) || ['Makefile', 'Dockerfile'].includes(file.name)
-                ? 'file-code'
-                : 'file',
+            : file.kind === 'office'
+              ? /\.xlsx$/i.test(file.name)
+                ? 'table'
+                : /\.pptx$/i.test(file.name)
+                  ? 'preview'
+                  : 'file-text'
+              : /\.md$/i.test(file.name)
+                ? 'markdown'
+                : /\.(?:[cm]?js|jsx|ts|tsx|py|rs|go|c|cc|cpp|h|hpp|cs|java|rb|lua|sh|json|ya?ml|toml|css|scss|xml|sql|tex|sty|bib|bst)$/i.test(
+                      file.name,
+                    ) || ['Makefile', 'Dockerfile'].includes(file.name)
+                  ? 'file-code'
+                  : 'file',
   );
 }

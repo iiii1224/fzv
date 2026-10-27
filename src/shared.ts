@@ -2,7 +2,7 @@ export const PRODUCT_NAME = 'fzv';
 export const VERSION = '0.1.1';
 export const MAX_FILE_SIZE = 20 * 1024 * 1024;
 
-export type PreviewKind = 'pdf' | 'html' | 'image' | 'text';
+export type PreviewKind = 'pdf' | 'html' | 'image' | 'text' | 'office';
 export interface ProjectFile {
   path: string;
   name: string;

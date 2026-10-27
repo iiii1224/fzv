@@ -25,8 +25,13 @@ export function fileUrl(
   revision = 0,
   standalone = false,
 ): string {
-  const endpoint =
-    file.kind === 'html' && !standalone ? '/preview-html' : '/file';
+  const endpoint = standalone
+    ? '/file'
+    : file.kind === 'html'
+      ? '/preview-html'
+      : file.kind === 'office'
+        ? '/office-pdf'
+        : '/file';
   return `${endpoint}?${new URLSearchParams({ path: file.path, revision: String(revision) })}`;
 }
 function errorMessage(pane: HTMLElement, message: string): void {
@@ -147,6 +152,28 @@ export function createPreview(
       .catch((error) => {
         if (!signal.aborted)
           errorMessage(element, `Could not load ${file.path}: ${error}`);
+      });
+  } else if (file.kind === 'office') {
+    element.textContent = 'Converting…';
+    // Fetch the converted PDF first so server diagnostics reach the pane.
+    const converted = fetch(url, { signal }).then(async (response) => {
+      if (!response.ok)
+        throw new Error(
+          (await response.text()).trim() || `HTTP ${response.status}`,
+        );
+      return new Uint8Array(await response.arrayBuffer());
+    });
+    void Promise.all([import('./pdf.js'), converted])
+      .then(([{ mountPdf }, data]) => {
+        if (!signal.aborted)
+          return mountPdf(element, data, signal, () => active);
+      })
+      .catch((error) => {
+        if (!signal.aborted)
+          errorMessage(
+            element,
+            `Could not preview ${file.path}. ${error instanceof Error ? error.message : error}`,
+          );
       });
   } else if (file.kind === 'image') {
     const stage = document.createElement('div');

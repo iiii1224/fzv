@@ -63,10 +63,16 @@ const IMAGE = new Set([
   '.bmp',
   '.ico',
 ]);
+const OFFICE = new Set(['.docx', '.pptx', '.xlsx']);
 const ASSET = new Set(['.eot', '.otf', '.ttf', '.woff', '.woff2']);
 const EXCLUDED = new Set(['node_modules', '__pycache__']);
 const MIME: Record<string, string> = {
   '.pdf': 'application/pdf',
+  '.docx':
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.pptx':
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   '.html': 'text/html; charset=utf-8',
   '.htm': 'text/html; charset=utf-8',
   '.png': 'image/png',
@@ -98,6 +104,7 @@ export function previewKind(filename: string): PreviewKind | null {
   if (ext === '.pdf') return 'pdf';
   if (ext === '.html' || ext === '.htm') return 'html';
   if (IMAGE.has(ext)) return 'image';
+  if (OFFICE.has(ext)) return 'office';
   if (
     TEXT.has(ext) ||
     ['Makefile', 'Dockerfile', 'LICENSE', 'LICENCE', 'NOTICE'].includes(

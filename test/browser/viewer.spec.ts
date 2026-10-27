@@ -20,7 +20,10 @@ test.beforeAll(async () => {
   fixture = await createFixture();
   watchTarget = path.join(fixture.root, 'docs', 'watch.txt');
   await writeFile(watchTarget, 'Before change');
-  ({ server } = await createViewer({ root: fixture.root }));
+  ({ server } = await createViewer({
+    root: fixture.root,
+    officeConverter: fixture.officeConverter,
+  }));
   ({ server: networkServer } = await createViewer({
     root: fixture.root,
     allowHtmlNetwork: true,
@@ -673,6 +676,38 @@ test('PDF search and zoom shortcuts affect only the focused group', async ({
   await expect(
     first.getByRole('textbox', { name: 'Find in PDF' }),
   ).toBeFocused();
+});
+
+test('previews Office documents as converted PDFs and downloads the original', async ({
+  page,
+}) => {
+  await openFile(page, 'docs/report.docx');
+  await expect(page.locator('.pdf-status')).toHaveText('1 / 2');
+  await page.getByRole('textbox', { name: 'Find in PDF' }).fill('report');
+  await expect(page.locator('.pdf-matches')).toHaveText('1 / 2');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#open-file')).toHaveAttribute(
+    'href',
+    /^\/office-pdf\?path=docs%2Freport.docx&/,
+  );
+  await expect(page.locator('#download-file')).toHaveAttribute(
+    'href',
+    /^\/file\?path=docs%2Freport.docx&/,
+  );
+  await expect(page.locator('#download-file')).toHaveAttribute(
+    'download',
+    'report.docx',
+  );
+  await openFile(page, 'docs/broken.docx');
+  await expect(page.locator('.preview-error:visible')).toHaveText(
+    'Could not preview docs/broken.docx. ibisOffice: document.docx: not a valid Office document',
+  );
+  await page.goto(networkOrigin);
+  await expect(page.locator('#status-project')).toHaveText('project');
+  await openFile(page, 'docs/slides.pptx');
+  await expect(page.locator('.preview-error:visible')).toContainText(
+    'Office previews need ibisOffice or LibreOffice.',
+  );
 });
 
 test('merges duplicate files, avoids empty self-splits, and cancels dragging cleanly', async ({

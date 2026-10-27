@@ -1,16 +1,25 @@
-import { mkdtemp, mkdir, writeFile, open, symlink, rm } from 'node:fs/promises';
+import {
+  chmod,
+  mkdtemp,
+  mkdir,
+  writeFile,
+  open,
+  symlink,
+  rm,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 // A real multi-page document exercises rendering, text, links and navigation.
-export function createPdf(pageCount = 1) {
+export function createPdf(pageCount = 1, label = 'fzv preview page') {
   const fontId = 3 + pageCount * 2;
   const objects = [
     '<</Type /Catalog /Pages 2 0 R>>',
     `<</Type /Pages /Kids [${Array.from({ length: pageCount }, (_, i) => `${3 + i * 2} 0 R`).join(' ')}] /Count ${pageCount}>>`,
   ];
   for (let page = 0; page < pageCount; page++) {
-    const content = `BT /F1 22 Tf 30 700 Td (fzv preview page ${page + 1}) Tj ET\n`;
+    const content = `BT /F1 22 Tf 30 700 Td (${label} ${page + 1}) Tj ET\n`;
     objects.push(
       `<</Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources <</Font <</F1 ${fontId} 0 R>>>> /Contents ${4 + page * 2} 0 R /Annots [<</Type /Annot /Subtype /Link /Rect [30 650 230 680] /Border [0 0 1] /A <</S /URI /URI (https://example.com/)>>>>]>>`,
       `<</Length ${Buffer.byteLength(content)}>>\nstream\n${content}endstream`,
@@ -45,6 +54,14 @@ export async function createFixture() {
     recursive: true,
   });
   await mkdir(path.join(base, 'outside'), { recursive: true });
+  await mkdir(path.join(base, 'bin'), { recursive: true });
+  // A shell wrapper stands in for an installed ibisOffice executable.
+  const officeCommand = path.join(base, 'bin', 'ibisOffice');
+  await writeFile(
+    officeCommand,
+    `#!/bin/sh\nexec "${process.execPath}" "${fileURLToPath(new URL('./fake-office-converter.mjs', import.meta.url))}" "$@"\n`,
+  );
+  await chmod(officeCommand, 0o755);
   const svg =
     '<svg xmlns="http://www.w3.org/2000/svg" width="480" height="280"><rect width="480" height="280" rx="20" fill="#e6d6c6"/><circle cx="240" cy="120" r="65" fill="#b65236"/><text x="240" y="228" text-anchor="middle" font-family="monospace" font-size="24" fill="#35322f">fzv preview</text></svg>';
   const pdf = createPdf(3);
@@ -112,6 +129,10 @@ export async function createFixture() {
       '<html><head><base href="https://example.invalid/"><link rel="stylesheet" href="style.css"></head><body><h1>Relative HTML preview</h1><img src="image.svg" width="240"><script>document.body.dataset.scriptRan="yes";try{localStorage.setItem("intrusion","yes")}catch{document.body.dataset.storageBlocked="yes"}try{parent.document.body.dataset.intrusion="yes"}catch{document.body.dataset.parentBlocked="yes"}</script></body></html>',
     ),
     writeFile(path.join(root, 'docs', 'example.pdf'), pdf),
+    writeFile(path.join(root, 'docs', 'report.docx'), 'Converted report'),
+    writeFile(path.join(root, 'docs', 'budget.xlsx'), 'Converted budget'),
+    writeFile(path.join(root, 'docs', 'slides.pptx'), 'Converted slides'),
+    writeFile(path.join(root, 'docs', 'broken.docx'), 'FAIL'),
     writeFile(path.join(root, '.env'), 'DO_NOT_SERVE=secret'),
     writeFile(path.join(root, '.private', 'secret.txt'), 'SECRET_HIDDEN'),
     writeFile(
@@ -144,6 +165,7 @@ export async function createFixture() {
   return {
     base,
     root,
+    officeConverter: { kind: 'ibisoffice', command: officeCommand },
     cleanup: () => rm(base, { recursive: true, force: true }),
   };
 }

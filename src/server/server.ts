@@ -1,8 +1,8 @@
 import { createServer } from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { networkInterfaces } from 'node:os';
-import { watch as watchFiles } from 'node:fs';
-import { readFile, realpath, stat } from 'node:fs/promises';
+import { constants, watch as watchFiles } from 'node:fs';
+import { open, readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { pipeline } from 'node:stream/promises';
@@ -13,6 +13,8 @@ import {
   isVisibleRelative,
 } from './catalog.js';
 import type { OpenProjectFile } from './catalog.js';
+import { OfficeConversionError, OfficeRenderer } from './office.js';
+import type { OfficeConverter } from './office.js';
 import { installNavigation } from '../navigation.js';
 import type { ProjectChange } from '../shared.js';
 
@@ -181,7 +183,10 @@ export interface ViewerOptions {
   uiRoot?: string;
   allowHtmlNetwork?: boolean;
   watch?: boolean;
+  officeConverter?: OfficeConverter | null;
 }
+export const OFFICE_UNAVAILABLE =
+  'Office previews need ibisOffice or LibreOffice. Install one and restart fzv, or pass --office-converter PATH.';
 export async function createViewer(options: ViewerOptions) {
   const catalog = await Catalog.create(options.root);
   const hosts = allowedHosts(options.host ?? '127.0.0.1');
@@ -189,6 +194,9 @@ export async function createViewer(options: ViewerOptions) {
   const allowHtmlNetwork = options.allowHtmlNetwork ?? false;
   const watchEnabled = options.watch ?? false;
   const previewCsp = allowHtmlNetwork ? NETWORK_PREVIEW_CSP : PREVIEW_CSP;
+  const office = options.officeConverter
+    ? new OfficeRenderer(options.officeConverter)
+    : undefined;
   const eventClients = new Set<ServerResponse>();
   let reloadTimer: NodeJS.Timeout | undefined;
   // Unknown or excessive changes are sent as null so clients refresh every tab.
@@ -364,6 +372,41 @@ export async function createViewer(options: ViewerOptions) {
         }
         return;
       }
+      if (url.pathname === '/office-pdf') {
+        const relative = url.searchParams.get('path') ?? '';
+        const file = await catalog.openFile(relative);
+        let bytes: Buffer;
+        try {
+          if (file.kind !== 'office') throw new FileUnavailable();
+          if (!office) throw new OfficeConversionError(OFFICE_UNAVAILABLE, 503);
+          // Convert the validated descriptor's contents, never a path the converter reopens.
+          bytes = await file.handle.readFile();
+        } finally {
+          await file.handle.close();
+        }
+        const filename = await office.pdf(
+          bytes,
+          path.extname(file.filename).toLowerCase(),
+        );
+        const handle = await open(filename, constants.O_RDONLY);
+        let size: number;
+        try {
+          size = (await handle.stat()).size;
+        } catch (error) {
+          await handle.close();
+          throw error;
+        }
+        await sendProjectFile(
+          req,
+          res,
+          { handle, size, filename, kind: 'pdf' },
+          relative,
+          false,
+          previewCsp,
+          allowHtmlNetwork,
+        );
+        return;
+      }
       if (url.pathname === '/file' || url.pathname.startsWith('/asset/')) {
         const asset = url.pathname.startsWith('/asset/');
         const relative = asset
@@ -424,6 +467,16 @@ export async function createViewer(options: ViewerOptions) {
         res.destroy();
         return;
       }
+      if (error instanceof OfficeConversionError) {
+        reply(
+          req,
+          res,
+          error.status,
+          'text/plain; charset=utf-8',
+          error.message + '\n',
+        );
+        return;
+      }
       const status =
         error instanceof URIError
           ? 400
@@ -450,6 +503,7 @@ export async function createViewer(options: ViewerOptions) {
   server.headersTimeout = 10_000;
   server.on('close', () => {
     watcher?.close();
+    void office?.close();
     clearTimeout(reloadTimer);
     for (const client of eventClients) client.end();
     eventClients.clear();
@@ -458,5 +512,5 @@ export async function createViewer(options: ViewerOptions) {
     watcher.close();
     server.emit('watchError', error);
   });
-  return { server, catalog };
+  return { server, catalog, office };
 }
