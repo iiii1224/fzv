@@ -4,6 +4,7 @@
 @import url('./workspace.css');
 @import url('./groups.css');
 @import url('./diff.css');
+@import url('./sidebar.css');
 :root {
   color-scheme: light;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;

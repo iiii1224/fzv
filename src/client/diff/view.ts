@@ -37,6 +37,8 @@ export const DEFAULT_DIFF_STATE: DiffViewState = {
 export interface DiffPane extends PreviewPane {
   update(state: DiffViewState): void;
   navigate(direction: 1 | -1): void;
+  /** Scrolls to the first change once it is computed, like VS Code's revealFirstDiff. */
+  revealFirstChange(): void;
 }
 
 const LINE_HEIGHT = 20;
@@ -214,6 +216,16 @@ export function createDiffPreview(
   let rows: DiffRow[] = [];
   let scrollers: HTMLElement[] = [];
   let changeStarts: number[] = [];
+  let revealPending = false;
+
+  // Revealed changes sit a third of the way down the editor.
+  const revealOffset = (scroller: HTMLElement) =>
+    Math.floor(scroller.clientHeight / 3);
+  const reveal = (row: number | undefined) => {
+    const scroller = scrollers.at(-1);
+    if (scroller && row !== undefined)
+      scroller.scrollTop = row * LINE_HEIGHT - revealOffset(scroller);
+  };
 
   const setMessage = (text: string) => {
     message.textContent = text;
@@ -496,6 +508,8 @@ export function createDiffPreview(
               : 'No changes.',
       );
       render();
+      if (revealPending) reveal(changeStarts[0]);
+      revealPending = false;
     } catch (error) {
       if (!current.signal.aborted)
         setMessage(`Could not compare ${target.path}: ${error}`);
@@ -553,15 +567,20 @@ export function createDiffPreview(
     navigate: (direction) => {
       const scroller = scrollers.at(-1);
       if (!scroller || !changeStarts.length) return;
-      // Reveal the change a third of the way down, wrapping like VS Code.
-      const offset = Math.floor(scroller.clientHeight / 3);
-      const current = Math.round((scroller.scrollTop + offset) / LINE_HEIGHT);
-      const next =
+      const current = Math.round(
+        (scroller.scrollTop + revealOffset(scroller)) / LINE_HEIGHT,
+      );
+      // Wrap around like VS Code.
+      reveal(
         direction > 0
           ? (changeStarts.find((row) => row > current) ?? changeStarts[0])
           : (changeStarts.findLast((row) => row < current) ??
-            changeStarts.at(-1)!);
-      scroller.scrollTop = next * LINE_HEIGHT - offset;
+              changeStarts.at(-1)!),
+      );
+    },
+    revealFirstChange: () => {
+      if (result) reveal(changeStarts[0]);
+      else revealPending = true;
     },
     dispose: () => {
       controller.abort();

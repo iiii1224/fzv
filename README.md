@@ -90,6 +90,8 @@ When the project is inside a git repository and `git` is on `PATH`, a text file 
 
 The diff toolbar moves between changes (also `]c` / `[c`), switches to an inline view, collapses unchanged regions, and toggles whether leading and trailing whitespace differences are shown. They are shown by default. fzv only reads from git: it never stages, commits, or takes the index lock.
 
+The Source Control view in the side bar lists changes like VS Code: "Staged Changes", "Changes" (including untracked files), and "Merge Changes" for conflicts, each with VS Code's status letters and colors. Selecting a change opens its diff, including deleted files; the file button opens the file itself. The current branch appears in the status bar, and the list refreshes when files change or the window regains focus.
+
 ## Keyboard shortcuts
 
 | Keys                     | Action                                        |
@@ -107,6 +109,8 @@ The diff toolbar moves between changes (also `]c` / `[c`), switches to an inline
 | `Ctrl/Cmd+F`             | Search within a PDF                           |
 | `Ctrl/Cmd` + `+` `-` `0` | Zoom images and PDFs (`0` fits to the view)   |
 | `]c` / `[c`              | Next / previous change in a diff              |
+| `Ctrl/Cmd+Shift+G`       | Show Source Control                           |
+| `Ctrl/Cmd+B`             | Show / hide the side bar                      |
 | `Escape`                 | Close search, help, or labels                 |
 
 Text fields keep their normal typing behavior. Shortcuts reserved by the browser take precedence.

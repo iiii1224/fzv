@@ -10,13 +10,15 @@ import type {
   ProjectInfo,
 } from '../shared.js';
 import { FuzzyIndex } from './search.js';
-import { readSession, writeSession } from './session.js';
+import { readSession, tabKey, writeSession } from './session.js';
 import type { SavedSession, SessionStorage } from './session.js';
 import { Workspace } from './workspace.js';
 import { hasViewer } from './preview.js';
 import { fileIcon } from './icons.js';
 import { initializeTheme } from './theme.js';
 import { installNavigation } from '../navigation.js';
+import { Sidebar } from './sidebar.js';
+import { SourceControlView } from './scm.js';
 
 function byId<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
@@ -44,6 +46,7 @@ let rescanQueued = false;
 let gitEnabled = false;
 let pendingBracket = '';
 let gitRequest: AbortController | undefined;
+let gitSnapshot = '';
 let storage: SessionStorage | undefined;
 try {
   storage = window.localStorage;
@@ -235,8 +238,23 @@ async function refreshGit(): Promise<void> {
     const response = await fetch('/api/git/status', { signal: request.signal });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const status = (await response.json()) as GitStatus;
-    if (gitRequest === request)
-      workspace.setGitChanges(status.available ? status.changes : []);
+    if (gitRequest !== request) return;
+    const snapshot = JSON.stringify(status);
+    const changed = gitSnapshot !== '' && snapshot !== gitSnapshot;
+    gitSnapshot = snapshot;
+    workspace.setGitChanges(status.available ? status.changes : []);
+    sourceControl.setStatus(status);
+    const count = sourceControl.count;
+    sidebar.setBadge(
+      'scm',
+      count,
+      `${count} pending change${count === 1 ? '' : 's'}`,
+    );
+    const branch = status.available ? (status.branch ?? 'HEAD') : null;
+    byId('status-branch').hidden = branch === null;
+    byId('status-branch-name').textContent = branch ?? '';
+    // Staging changes the compared contents without touching project files.
+    if (changed) workspace.reloadDiffs();
   } catch {
     /* Keep the previous status; the next refresh can succeed. */
   }
@@ -357,6 +375,7 @@ async function loadIndex(
       }
       projectId = project.id;
       gitEnabled = project.git === true;
+      if (gitEnabled) sidebar.add(sourceControlView);
       void refreshGit();
       byId('project-name').textContent = project.name;
       byId('status-project').textContent = project.name;
@@ -478,6 +497,20 @@ window.addEventListener('keydown', (event) => {
     workspace.cycle(event.key.toLowerCase() === 'j' ? 1 : -1);
     return;
   }
+  // VS Code's view shortcuts: Ctrl+Shift+G for Source Control, Ctrl+B for the side bar.
+  if ((event.ctrlKey || event.metaKey) && !event.altKey && !searchPanel.open) {
+    const key = event.key.toLowerCase();
+    if (event.shiftKey && key === 'g' && gitEnabled) {
+      event.preventDefault();
+      sidebar.toggleFocus('scm');
+      return;
+    }
+    if (!event.shiftKey && key === 'b') {
+      event.preventDefault();
+      sidebar.toggle();
+      return;
+    }
+  }
   if (event.ctrlKey && event.key === 'Tab') {
     event.preventDefault();
     workspace.cycle(event.shiftKey ? -1 : 1);
@@ -582,6 +615,34 @@ const navigation = installNavigation({
     );
   },
 });
+const sourceControl = new SourceControlView({
+  openChange: (change) => {
+    workspace.openDiff(change);
+    sidebar.afterOpen();
+  },
+  openFile: (path) => {
+    void openPath(path);
+    sidebar.afterOpen();
+  },
+  refresh: () => void refreshGit(),
+});
+const sourceControlView = {
+  id: 'scm',
+  title: 'Source Control',
+  icon: 'source-control',
+  keybinding: 'Ctrl+Shift+G',
+  element: sourceControl.element,
+  actions: sourceControl.actions,
+  focus: () => sourceControl.focus(),
+};
+const sidebar = new Sidebar(
+  byId('activity-bar'),
+  byId('sidebar'),
+  byId('sidebar-title'),
+  byId('sidebar-actions'),
+  byId('sidebar-content'),
+  byId('sidebar-sash'),
+);
 const workspace = new Workspace(
   byId('preview'),
   () => {
@@ -594,11 +655,15 @@ const workspace = new Workspace(
     byId('tab-count').textContent =
       `${count} open tab${count === 1 ? '' : 's'}`;
     renderResults();
+    sourceControl.setActive(
+      active ? tabKey(active.file.path, active.diff) : null,
+    );
     save();
   },
   (text, label) => void copyToClipboard(text, label),
   (path) => void openPath(path),
 );
+byId('status-branch').addEventListener('click', () => sidebar.show('scm'));
 window.addEventListener('focus', () => void refreshGit());
 window.addEventListener('message', (event) => {
   if (event.origin !== 'null') return;

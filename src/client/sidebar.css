@@ -1,0 +1,317 @@
+/* Activity bar, side bar, and Source Control rules adapted from VS Code 1.106.0
+ * activitybarpart.css, activityaction.css, sidebarpart.css, and scm.css.
+ * Git decoration colors are the defaults contributed by its git extension;
+ * list.inactiveSelectionBackground is the listColors.ts default. */
+:root {
+  --vscode-gitDecoration-addedResourceForeground: #587c0c;
+  --vscode-gitDecoration-modifiedResourceForeground: #895503;
+  --vscode-gitDecoration-deletedResourceForeground: #ad0707;
+  --vscode-gitDecoration-renamedResourceForeground: #007100;
+  --vscode-gitDecoration-untrackedResourceForeground: #007100;
+  --vscode-gitDecoration-stageModifiedResourceForeground: #895503;
+  --vscode-gitDecoration-stageDeletedResourceForeground: #ad0707;
+  --vscode-gitDecoration-conflictingResourceForeground: #ad0707;
+  --vscode-list-inactiveSelectionBackground: #e4e6f1;
+  --sidebar-row-height: 22px;
+}
+:root[data-theme='dark'] {
+  --vscode-gitDecoration-addedResourceForeground: #81b88b;
+  --vscode-gitDecoration-modifiedResourceForeground: #e2c08d;
+  --vscode-gitDecoration-deletedResourceForeground: #c74e39;
+  --vscode-gitDecoration-renamedResourceForeground: #73c991;
+  --vscode-gitDecoration-untrackedResourceForeground: #73c991;
+  --vscode-gitDecoration-stageModifiedResourceForeground: #e2c08d;
+  --vscode-gitDecoration-stageDeletedResourceForeground: #c74e39;
+  --vscode-gitDecoration-conflictingResourceForeground: #e4676b;
+  --vscode-list-inactiveSelectionBackground: #37373d;
+}
+
+.activity-bar {
+  flex: 0 0 48px;
+  display: flex;
+  flex-direction: column;
+  background: var(--vscode-activityBar-background);
+  border-right: 1px solid var(--vscode-activityBar-border);
+}
+.activity-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 47px;
+  height: 48px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--vscode-activityBar-inactiveForeground);
+}
+.activity-item > .codicon {
+  font-size: 24px;
+}
+.activity-item:hover,
+.activity-item:focus-visible,
+.activity-item.checked {
+  color: var(--vscode-activityBar-foreground);
+}
+.activity-item:focus-visible {
+  outline: none;
+}
+.activity-item.checked::before,
+.activity-item:focus-visible::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-left: 2px solid var(--vscode-activityBar-activeBorder);
+}
+.activity-item:focus-visible:not(.checked)::before {
+  border-color: var(--vscode-focusBorder);
+}
+.activity-badge {
+  position: absolute;
+  top: 24px;
+  right: 8px;
+  min-width: 8px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 20px;
+  background: var(--vscode-activityBarBadge-background);
+  color: var(--vscode-activityBarBadge-foreground);
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+}
+
+.sidebar {
+  flex: 0 0 var(--sidebar-width, 300px);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--vscode-sideBar-background);
+  color: var(--vscode-sideBar-foreground);
+  border-right: 1px solid var(--vscode-sideBar-border);
+}
+.sidebar:focus-visible {
+  outline-offset: -2px;
+}
+.sidebar-title {
+  display: flex;
+  align-items: center;
+  flex: 0 0 35px;
+  padding: 0 8px 0 20px;
+}
+.sidebar-title h2 {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--vscode-sideBarTitle-foreground);
+  font-size: 11px;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.sidebar-actions {
+  display: flex;
+  gap: 2px;
+}
+.sidebar-actions .toolbar-button {
+  padding: 3px;
+}
+.sidebar-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.sidebar-message {
+  margin: 0;
+  padding: 4px 20px 8px;
+  line-height: 1.5;
+}
+.sidebar-sash {
+  flex: 0 0 4px;
+  margin: 0 -2px;
+  position: relative;
+  z-index: 3;
+  cursor: ew-resize;
+  touch-action: none;
+}
+.sidebar-sash:hover,
+body.sash-dragging .sidebar-sash {
+  background: var(--vscode-focusBorder);
+  transition: background-color 0.1s ease-out 0.3s;
+}
+body.sash-dragging {
+  cursor: ew-resize;
+  user-select: none;
+}
+body.sash-dragging iframe {
+  pointer-events: none;
+}
+
+.scm-tree {
+  outline: none;
+}
+.scm-row {
+  display: flex;
+  align-items: center;
+  height: var(--sidebar-row-height);
+  line-height: var(--sidebar-row-height);
+  padding-right: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+}
+.scm-row:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+.scm-row[aria-selected='true'] {
+  background: var(--vscode-list-inactiveSelectionBackground);
+}
+.sidebar:focus-within .scm-row[aria-selected='true'] {
+  background: var(--vscode-list-activeSelectionBackground);
+  color: var(--vscode-list-activeSelectionForeground);
+}
+.scm-row:focus-visible {
+  outline: 1px solid var(--vscode-list-focusAndSelectionOutline);
+  outline-offset: -1px;
+}
+.scm-group {
+  padding-left: 4px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.scm-twistie {
+  flex: 0 0 16px;
+  margin-right: 2px;
+  font-size: 16px;
+}
+.scm-group-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.scm-count {
+  min-width: 18px;
+  height: 18px;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 11px;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 18px;
+  text-align: center;
+}
+.scm-resource {
+  gap: 6px;
+  padding-left: 30px;
+  color: var(--git-color);
+}
+.scm-resource > .codicon {
+  flex: none;
+  color: var(--vscode-icon-foreground);
+}
+.scm-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.scm-resource.deleted .scm-name {
+  text-decoration: line-through;
+}
+.scm-description {
+  margin-left: 0.5em;
+  font-size: 0.9em;
+  opacity: 0.7;
+  color: var(--vscode-sideBar-foreground);
+}
+.sidebar:focus-within
+  .scm-row[aria-selected='true']
+  :is(.scm-description, .scm-letter, .codicon) {
+  color: inherit;
+}
+.scm-actions {
+  display: none;
+}
+.scm-row:hover .scm-actions,
+.scm-row:focus-visible .scm-actions {
+  display: flex;
+}
+.scm-actions .toolbar-button {
+  padding: 2px;
+}
+.scm-letter {
+  flex: 0 0 16px;
+  margin-left: 5px;
+  text-align: center;
+  font-size: 12px;
+}
+.git-added {
+  --git-color: var(--vscode-gitDecoration-addedResourceForeground);
+}
+.git-modified {
+  --git-color: var(--vscode-gitDecoration-modifiedResourceForeground);
+}
+.git-deleted {
+  --git-color: var(--vscode-gitDecoration-deletedResourceForeground);
+}
+.git-renamed {
+  --git-color: var(--vscode-gitDecoration-renamedResourceForeground);
+}
+.git-untracked {
+  --git-color: var(--vscode-gitDecoration-untrackedResourceForeground);
+}
+.git-stage-modified {
+  --git-color: var(--vscode-gitDecoration-stageModifiedResourceForeground);
+}
+.git-stage-deleted {
+  --git-color: var(--vscode-gitDecoration-stageDeletedResourceForeground);
+}
+.git-conflicting {
+  --git-color: var(--vscode-gitDecoration-conflictingResourceForeground);
+}
+
+.status-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 100%;
+  padding: 0 5px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-size: inherit;
+}
+.status-item:hover {
+  background: var(--vscode-statusBarItem-hoverBackground);
+  color: var(--vscode-statusBarItem-hoverForeground);
+}
+.status-item .codicon {
+  font-size: 14px;
+}
+
+/* Narrow windows overlay the side bar instead of squeezing the editor. */
+@media (max-width: 700px) {
+  .workspace {
+    position: relative;
+  }
+  .sidebar {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 48px;
+    z-index: 5;
+    width: min(var(--sidebar-width, 300px), calc(100% - 64px));
+    box-shadow: 0 0 8px var(--widget-shadow);
+  }
+  .sidebar-sash {
+    display: none;
+  }
+}

@@ -68,7 +68,8 @@ License copy: `licenses/dompurify-APACHE-2.0.txt`.
 Tabs, Quick Input styling, and the Light Modern / Dark Modern UI palettes use assets from
 Microsoft Visual Studio Code 1.106.0, adapted to the browser workspace. The diff view
 includes VS Code's default lines diff algorithm and ports its diff editor alignment,
-decoration, and unchanged-region rules.
+decoration, and unchanged-region rules. The activity bar, side bar, and Source Control view
+adapt VS Code's workbench styles and its git extension's status letters and decoration colors.
 Copyright (c) Microsoft Corporation. All rights reserved.
 
 Upstream: https://github.com/microsoft/vscode/tree/1.106.0

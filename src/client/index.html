@@ -30,6 +30,34 @@
       </button>
     </header>
     <div class="workspace" id="workspace">
+      <nav
+        id="activity-bar"
+        class="activity-bar"
+        role="tablist"
+        aria-label="Active View Switcher"
+        aria-orientation="vertical"
+        hidden
+      ></nav>
+      <aside
+        id="sidebar"
+        class="sidebar"
+        aria-labelledby="sidebar-title"
+        hidden
+      >
+        <div class="sidebar-title">
+          <h2 id="sidebar-title"></h2>
+          <div id="sidebar-actions" class="sidebar-actions"></div>
+        </div>
+        <div id="sidebar-content" class="sidebar-content"></div>
+      </aside>
+      <div
+        id="sidebar-sash"
+        class="sidebar-sash"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize side bar"
+        hidden
+      ></div>
       <main id="main" class="main" tabindex="-1">
         <div
           id="preview"
@@ -41,6 +69,15 @@
     </div>
     <footer class="statusbar">
       <span><span class="status-dot"></span> Read only</span
+      ><button
+        id="status-branch"
+        class="status-item"
+        type="button"
+        title="Show Source Control"
+        hidden
+      >
+        <i class="codicon codicon-git-branch" aria-hidden="true"></i
+        ><span id="status-branch-name"></span></button
       ><span id="status-project">Loading project…</span
       ><span id="tab-count">0 open tabs</span>
     </footer>

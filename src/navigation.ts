@@ -113,6 +113,8 @@ export function installNavigation(options: NavigationOptions = {}): {
         ['Ctrl/Cmd + + / − / 0', 'Zoom an image or PDF'],
         [']c / [c', 'Next / previous change in a diff'],
         ['Alt + F5 / Shift + Alt + F5', 'Next / previous change in a diff'],
+        ['Ctrl/Cmd + Shift + g', 'Show Source Control'],
+        ['Ctrl/Cmd + b', 'Show or hide the side bar'],
       );
     }
     const list = document.createElement('div');
@@ -162,7 +164,7 @@ export function installNavigation(options: NavigationOptions = {}): {
     const root = document.querySelector('dialog[open]') ?? document.body;
     const targets = [
       ...root.querySelectorAll<HTMLElement>(
-        'a[href], button:not(:disabled), input:not(:disabled):not([type="hidden"]), textarea:not(:disabled), select:not(:disabled), summary, [role="button"], [tabindex]:not([tabindex="-1"]), [contenteditable]:not([contenteditable="false"]), iframe',
+        'a[href], button:not(:disabled), input:not(:disabled):not([type="hidden"]), textarea:not(:disabled), select:not(:disabled), summary, [role="button"], [role="treeitem"], [tabindex]:not([tabindex="-1"]), [contenteditable]:not([contenteditable="false"]), iframe',
       ),
     ].filter((target) => {
       if (

@@ -402,18 +402,18 @@ export class Workspace {
       this.activate(existing);
       return;
     }
-    this.activate(
-      this.makeTab(
-        { path: change.path, name, kind: change.kind, size: 0 },
-        group,
-        'source',
-        {
-          stage: change.stage,
-          originalPath: change.originalPath,
-          state: this.selectedGroup.active?.diff?.state ?? DEFAULT_DIFF_STATE,
-        },
-      ),
+    const tab = this.makeTab(
+      { path: change.path, name, kind: change.kind, size: 0 },
+      group,
+      'source',
+      {
+        stage: change.stage,
+        originalPath: change.originalPath,
+        state: this.selectedGroup.active?.diff?.state ?? DEFAULT_DIFF_STATE,
+      },
     );
+    (tab.pane as DiffPane).revealFirstChange();
+    this.activate(tab);
   }
 
   /** Latest Source Control status, used for the "Open Changes" action. */
@@ -430,6 +430,11 @@ export class Workspace {
     const changes = this.gitChanges.get(path) ?? [];
     // Like VS Code, prefer working tree changes over staged ones.
     return changes.find((change) => change.stage === 'worktree') ?? changes[0];
+  }
+
+  /** Reloads diff tabs after Source Control status changes, such as staging. */
+  reloadDiffs(): void {
+    for (const tab of this.tabs) if (tab.diff) this.reload(tab);
   }
 
   navigateChange(direction: 1 | -1): boolean {
