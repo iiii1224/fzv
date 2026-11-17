@@ -3,13 +3,18 @@ import DOMPurify from 'dompurify';
 import { icon } from './icons.js';
 
 // Local resources use the same validated route as HTML preview assets.
-function resourceUrl(value: string, path: string): string | null {
+function resourceUrl(
+  value: string,
+  path: string,
+  image = false,
+): string | null {
   if (value.startsWith('#')) return value;
   const base = new URL(
     path.split('/').map(encodeURIComponent).join('/'),
     'https://project.invalid/',
   );
   const url = new URL(value, base);
+  if (image && /^data:image\//i.test(url.href)) return url.href;
   if (url.origin === base.origin)
     return `/asset${url.pathname}${url.search}${url.hash}`;
   return ['http:', 'https:', 'mailto:'].includes(url.protocol)
@@ -34,7 +39,7 @@ export function markdownView(content: string, path: string): HTMLElement {
     element.removeAttribute('srcset');
     if (!value) continue;
     try {
-      const url = resourceUrl(value, path);
+      const url = resourceUrl(value, path, element instanceof HTMLImageElement);
       if (url) element.setAttribute(attribute, url);
       else element.removeAttribute(attribute);
     } catch {

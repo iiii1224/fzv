@@ -999,6 +999,39 @@ test('renders Markdown tables and local images while removing active HTML and un
   await expect(page.locator('.source-text:visible')).toHaveText(content);
 });
 
+test('renders external and embedded Markdown images', async ({ page }) => {
+  const svg = await readFile(path.join(fixture.root, 'docs', 'image.svg'));
+  for (const protocol of ['http', 'https']) {
+    await page.route(
+      `${protocol}://images.example.invalid/image.svg`,
+      (route) => route.fulfill({ contentType: 'image/svg+xml', body: svg }),
+    );
+  }
+  const dataUrl = `data:image/svg+xml;base64,${svg.toString('base64')}`;
+  await writeFile(
+    path.join(fixture.root, 'docs', 'markdown-images.md'),
+    `![HTTP image](http://images.example.invalid/image.svg)\n\n![HTTPS image](https://images.example.invalid/image.svg)\n\n![Embedded image](${dataUrl})\n\n![Root image](/docs/image.svg)\n\n![Parent image](../docs/image.svg)\n\n<img alt="HTML image" src="https://images.example.invalid/image.svg">\n\n[Unsafe data link](${dataUrl})\n`,
+  );
+  await page.getByRole('button', { name: 'Refresh file list' }).click();
+  await openFile(page, 'docs/markdown-images.md');
+  const article = page.locator('.markdown-preview:visible');
+  for (const name of [
+    'HTTP image',
+    'HTTPS image',
+    'Embedded image',
+    'Root image',
+    'Parent image',
+    'HTML image',
+  ]) {
+    await expect(
+      article.getByRole('img', { name, exact: true }),
+    ).toHaveJSProperty('naturalWidth', 480);
+  }
+  await expect(
+    article.getByText('Unsafe data link', { exact: true }),
+  ).not.toHaveAttribute('href', /./);
+});
+
 test('opens plain text and empty files in source mode only', async ({
   page,
 }) => {

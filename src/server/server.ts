@@ -21,7 +21,7 @@ import type { ProjectChange } from '../shared.js';
 
 const UI_ROOT = fileURLToPath(new URL('../client/', import.meta.url));
 const UI_CSP =
-  "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'";
+  "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self'; img-src 'self' http: https: data: blob:; font-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'";
 export const PREVIEW_CSP =
   "sandbox allow-scripts; default-src 'none'; img-src http: https: data: blob:; style-src http: https: data: 'unsafe-inline'; font-src http: https: data:; media-src http: https: data: blob:; script-src 'unsafe-inline'; connect-src 'none'; object-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'self'; frame-ancestors 'self'";
 export const NETWORK_PREVIEW_CSP =
