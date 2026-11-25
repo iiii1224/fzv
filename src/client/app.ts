@@ -13,7 +13,6 @@ import { FuzzyIndex } from './search.js';
 import { readSession, tabKey, writeSession } from './session.js';
 import type { SavedSession, SessionStorage } from './session.js';
 import { Workspace } from './workspace.js';
-import { hasViewer } from './preview.js';
 import { fileIcon } from './icons.js';
 import { initializeTheme } from './theme.js';
 import { installNavigation } from '../navigation.js';
@@ -316,21 +315,32 @@ function applyIndex(
   return true;
 }
 
-function applyChange(change: ProjectChange): void {
-  const { paths } = change;
-  for (const tab of workspace.tabs)
-    if (
-      !paths ||
-      // HTML and Markdown viewers can embed other project files.
-      (hasViewer(tab.file) && tab.mode === 'viewer') ||
-      paths.some(
-        (path) =>
-          tab.file.path === path || tab.file.path.startsWith(`${path}/`),
-      )
-    )
-      workspace.reload(tab);
-  rescanIndex(true);
-  void refreshGit();
+function watchProject(): void {
+  let revision: string | undefined;
+  let retryDelay = 1000;
+  const connect = () => {
+    const socket = new WebSocket(new URL('/api/events', location.href));
+    socket.addEventListener('open', () => {
+      retryDelay = 1000;
+    });
+    socket.addEventListener('message', (event) => {
+      const change = JSON.parse(event.data) as ProjectChange;
+      if (change.paths?.length !== 0) {
+        workspace.projectChanged(change.paths);
+      } else if (revision !== undefined && revision !== change.revision) {
+        // The project changed while this tab was disconnected.
+        workspace.projectChanged(null);
+      }
+      revision = change.revision;
+      rescanIndex(true);
+      void refreshGit();
+    });
+    socket.addEventListener('close', () => {
+      setTimeout(connect, retryDelay);
+      retryDelay = Math.min(retryDelay * 2, 10_000);
+    });
+  };
+  connect();
 }
 
 function scanIndex(mode: 'initial' | 'background'): void {
@@ -370,12 +380,7 @@ async function loadIndex(
       if (!projectResponse.ok)
         throw new Error(`HTTP ${projectResponse.status}`);
       const project = (await projectResponse.json()) as ProjectInfo;
-      if (project.watch) {
-        const events = new EventSource('/api/events');
-        events.addEventListener('change', (event) =>
-          applyChange(JSON.parse(event.data) as ProjectChange),
-        );
-      }
+      if (project.watch) watchProject();
       projectId = project.id;
       explorer.setProject(project.id, project.name);
       gitEnabled = project.git === true;

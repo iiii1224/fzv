@@ -1,5 +1,5 @@
 export const PRODUCT_NAME = 'fzv';
-export const VERSION = '0.4.0';
+export const VERSION = '0.5.0';
 export const MAX_FILE_SIZE = 20 * 1024 * 1024;
 
 export type PreviewKind = 'pdf' | 'html' | 'image' | 'text' | 'office';
@@ -27,8 +27,9 @@ export interface FileIndex {
   files: ProjectFile[];
   directories: ProjectDirectory[];
 }
-/** Watch-mode change notification; null paths means any file may have changed. */
 export interface ProjectChange {
+  revision: string;
+  /** Empty on connection. Null means any file may have changed. */
   paths: string[] | null;
 }
 

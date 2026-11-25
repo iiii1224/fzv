@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
 import { once } from 'node:events';
-import { readFile, rm, writeFile } from 'node:fs/promises';
+import { readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 // @ts-expect-error Fixtures and compiled server are plain JavaScript, used only by tests.
 import { createFixture } from '../fixtures.mjs';
@@ -23,6 +23,7 @@ test.beforeAll(async () => {
   ({ server } = await createViewer({
     root: fixture.root,
     officeConverter: fixture.officeConverter,
+    watch: false,
   }));
   ({ server: networkServer } = await createViewer({
     root: fixture.root,
@@ -30,7 +31,6 @@ test.beforeAll(async () => {
   }));
   ({ server: watchServer } = await createViewer({
     root: fixture.root,
-    watch: true,
   }));
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
@@ -245,19 +245,61 @@ test('opts into remote scripts and sandboxed same-project HTML requests', async 
   );
 });
 
-test('reloads the viewer when a project file changes in watch mode', async ({
+test('refreshes the Explorer and marks changed tabs over WebSocket by default', async ({
   page,
 }) => {
+  const added = path.join(fixture.root, 'docs', 'watch-created.txt');
+  const renamed = path.join(fixture.root, 'docs', 'watch-renamed.txt');
+  const connection = page.waitForEvent('websocket', (socket) =>
+    socket.url().endsWith('/api/events'),
+  );
   await page.goto(watchOrigin);
+  await connection;
   await openFile(page, 'docs/watch.txt');
   await expect(page.locator('.source-text:visible')).toContainText(
     'Before change',
   );
-  await writeFile(watchTarget, 'After change');
-  await expect(page.locator('.source-text:visible')).toContainText(
-    'After change',
-    { timeout: 10000 },
-  );
+  await openFile(page, 'README.md');
+  const tab = page.getByRole('tab', { name: 'docs/watch.txt', exact: true });
+  const updated = tab.getByTitle('File updated');
+  const otherTab = page.getByRole('tab', { name: 'README.md', exact: true });
+  const explorer = page.getByRole('tree', { name: 'Files Explorer' });
+  const createdRow = explorer.getByRole('treeitem', {
+    name: 'watch-created.txt',
+  });
+  const renamedRow = explorer.getByRole('treeitem', {
+    name: 'watch-renamed.txt',
+  });
+
+  try {
+    await expect(updated).toBeHidden();
+    await writeFile(watchTarget, 'After change');
+    await expect(updated).toBeVisible();
+    await expect(tab).toHaveAccessibleDescription('File updated');
+    await expect(otherTab.getByTitle('File updated')).toBeHidden();
+    await expect(otherTab).toHaveAttribute('aria-selected', 'true');
+
+    await tab.click();
+    await expect(page.locator('.source-text:visible')).toContainText(
+      'After change',
+    );
+    await expect(updated).toBeVisible();
+    await page.keyboard.press('r');
+    await expect(updated).toBeHidden();
+
+    await writeFile(added, 'Created while watching');
+    await expect(createdRow).toBeVisible();
+    await rename(added, renamed);
+    await expect(renamedRow).toBeVisible();
+    await expect(createdRow).toHaveCount(0);
+    await rm(renamed);
+    await expect(renamedRow).toHaveCount(0);
+    await expect(updated).toBeHidden();
+  } finally {
+    await Promise.all(
+      [added, renamed].map((file) => rm(file, { force: true })),
+    );
+  }
 });
 
 test('finds files created after the page loaded without watch mode', async ({

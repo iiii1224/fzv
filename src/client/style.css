@@ -325,6 +325,9 @@ kbd {
 .tab-select > .codicon {
   flex-shrink: 0;
 }
+.tab-select > .tab-update-indicator {
+  color: var(--vscode-editorInfo-foreground, currentColor);
+}
 .tab.active .tab-select {
   color: var(--vscode-tab-activeForeground);
 }

@@ -9,9 +9,9 @@
 コーディングエージェントに作らせたファイルを、IDE を開かずにブラウザで探して読むための読み取り専用ビューアです。PDF、HTML、画像、ソースコード、Office 文書を、同じタブと分割画面で切り替えながら確認できます。
 
 ```console
-$ npx --yes @aaa_iii/fzv@latest --watch
+$ npx --yes @aaa_iii/fzv@latest
 
-  fzv 0.4.0
+  fzv 0.5.0
   Project  ~/dev/fzv
   Viewer   http://127.0.0.1:29814/
   Office   ibisOffice (~/.local/bin/ibisOffice)
@@ -44,8 +44,8 @@ $ npx --yes @aaa_iii/fzv@latest --watch
 # カレントディレクトリを開く
 npx --yes @aaa_iii/fzv@latest
 
-# ファイルの変更を検知して、検索対象と開いているタブを更新する
-npx --yes @aaa_iii/fzv@latest --watch
+# 自動更新を無効にして開く
+npx --yes @aaa_iii/fzv@latest --no-watch
 
 # 別のディレクトリを開く
 npx --yes @aaa_iii/fzv@latest --root ~/projects/example
@@ -74,6 +74,8 @@ npx --yes @aaa_iii/fzv@latest --root ~/projects/example
 ファイルはタブで開きます。タブはドラッグして並べ替えたり、上下左右にドロップして画面を分割したりできます。`Ctrl` を押しながら（macOS では `Option`）ドラッグすると、移動ではなく複製になります。分割は最大 32 個で、境界をドラッグして大きさを変えられます。
 
 開いているタブ、分割の配置、表示モードはブラウザに保存され、再読み込みしても戻ります。
+
+既定ではファイルの変更に応じてエクスプローラー、検索、プレビューが自動更新されます。変更されたファイルのタブにはベルアイコンが表示され、手動で再読み込みすると消えます。
 
 ### プレビューできる形式
 
@@ -139,7 +141,7 @@ npx --yes @aaa_iii/fzv@latest --office-converter ~/Applications/ibisOffice-0.8.4
 | `--root PATH`             | カレントディレクトリ       | 開くプロジェクトのルート                                             |
 | `--host HOST`             | `127.0.0.1`                | 待ち受けるアドレス                                                   |
 | `--port PORT`             | プロジェクトのパスから決定 | `0` で空きポート。明示したポートが使用中なら起動しない               |
-| `--watch`                 | 無効                       | ファイルの変更を検知して、検索対象と開いているタブを更新             |
+| `--watch`, `--no-watch`   | 有効                       | ファイルの自動更新を有効または無効にする                             |
 | `--allow-html-network`    | 無効                       | HTML プレビューに外部スクリプトの読み込みとネットワーク通信を許可    |
 | `--office-converter PATH` | `PATH` から自動検出        | Office 文書の変換に使う ibisOffice または LibreOffice の実行ファイル |
 | `-h`, `--help`            |                            | ヘルプを表示                                                         |
@@ -168,7 +170,7 @@ npx --yes @aaa_iii/fzv@latest --host 0.0.0.0 --port 8000
 ```bash
 npm ci
 npm run build
-node dist/server/cli.js --watch
+node dist/server/cli.js
 ```
 
 UI を変更しながら確認するときは、サーバーを起動したまま別のターミナルで `npm run dev:ui` を実行し、Vite が表示する URL を開きます。テストは `npm test` と `npm run test:browser` です。

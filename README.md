@@ -9,9 +9,9 @@ English | [日本語](https://github.com/iiii1224/fzv/blob/main/README.ja.md)
 A read-only browser viewer for finding and reading the files your coding agent produces, without opening an IDE. Switch between PDFs, HTML, images, source code, and Office documents in the same tabs and split panes.
 
 ```console
-$ npx --yes @aaa_iii/fzv@latest --watch
+$ npx --yes @aaa_iii/fzv@latest
 
-  fzv 0.4.0
+  fzv 0.5.0
   Project  ~/dev/fzv
   Viewer   http://127.0.0.1:29814/
   Office   ibisOffice (~/.local/bin/ibisOffice)
@@ -44,8 +44,8 @@ fzv is built for keeping an eye on generated output while you keep directing an 
 # Open the current directory
 npx --yes @aaa_iii/fzv@latest
 
-# Watch for changes and refresh the search index and open tabs
-npx --yes @aaa_iii/fzv@latest --watch
+# Open without automatic updates
+npx --yes @aaa_iii/fzv@latest --no-watch
 
 # Open another directory
 npx --yes @aaa_iii/fzv@latest --root ~/projects/example
@@ -74,6 +74,8 @@ The activity bar on the left switches the side bar between the Explorer and, in 
 Files open in tabs. Drag a tab to reorder it, or drop it on any edge to split the view. Hold `Ctrl` (`Option` on macOS) while dragging to copy the tab instead of moving it. Up to 32 split panes are supported, and the dividers can be dragged to resize them.
 
 Open tabs, the split layout, and view modes are saved in the browser and restored on reload.
+
+By default, file changes refresh the Explorer, search results, and previews automatically. Changed files show a bell icon on their tabs. Manually reloading a tab clears its icon.
 
 ### Supported formats
 
@@ -139,7 +141,7 @@ Executables whose names start with `soffice` or `libreoffice` are run as LibreOf
 | `--root PATH`             | Current directory       | Project root to open                                                  |
 | `--host HOST`             | `127.0.0.1`             | Address to listen on                                                  |
 | `--port PORT`             | Derived from the path   | `0` picks a free port. An explicit port that is in use stops startup  |
-| `--watch`                 | Off                     | Watch for changes and refresh the search index and open tabs          |
+| `--watch`, `--no-watch`   | On                      | Enable or disable automatic file updates                              |
 | `--allow-html-network`    | Off                     | Let HTML previews load external scripts and make network requests     |
 | `--office-converter PATH` | Auto-detected on `PATH` | ibisOffice or LibreOffice executable used to convert Office documents |
 | `-h`, `--help`            |                         | Show help                                                             |
@@ -168,7 +170,7 @@ fzv is in 0.x development. Options and shortcuts may change in minor releases.
 ```bash
 npm ci
 npm run build
-node dist/server/cli.js --watch
+node dist/server/cli.js
 ```
 
 To work on the UI, keep the server running, run `npm run dev:ui` in another terminal, and open the URL Vite prints. Run the tests with `npm test` and `npm run test:browser`.

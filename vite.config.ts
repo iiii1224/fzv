@@ -61,6 +61,7 @@ export default defineConfig({
   build: { outDir: '../../dist/client', emptyOutDir: true },
   server: {
     proxy: {
+      '/api/events': { target: 'ws://127.0.0.1:8000', ws: true },
       '/api': 'http://127.0.0.1:8000',
       '/file': 'http://127.0.0.1:8000',
       '/preview-html': 'http://127.0.0.1:8000',

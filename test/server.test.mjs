@@ -337,3 +337,59 @@ test('serves the built UI and blocks unlisted static paths', async () => {
   ])
     assert.ok([400, 404].includes((await get(path)).status), path);
 });
+
+test(
+  'watch WebSockets require an allowed host and same origin, and close with the server',
+  { timeout: 5000 },
+  async () => {
+    const { server: watchServer } = await createViewer({
+      root: fixture.root,
+      watch: true,
+    });
+    watchServer.listen(0, '127.0.0.1');
+    await once(watchServer, 'listening');
+    const watchOrigin = `http://127.0.0.1:${watchServer.address().port}`;
+    function upgrade(headers) {
+      return new Promise((resolve, reject) => {
+        const req = request(watchOrigin + '/api/events', {
+          headers: {
+            Origin: watchOrigin,
+            Connection: 'Upgrade',
+            Upgrade: 'websocket',
+            'Sec-WebSocket-Version': '13',
+            'Sec-WebSocket-Key': 'dGhlIHNhbXBsZSBub25jZQ==',
+            ...headers,
+          },
+        });
+        req.on('response', (res) => {
+          res.resume();
+          resolve({ status: res.statusCode });
+        });
+        req.on('upgrade', (res, socket) =>
+          resolve({ status: res.statusCode, socket }),
+        );
+        req.on('error', reject);
+        req.end();
+      });
+    }
+    try {
+      const otherOrigin = await upgrade({ Origin: origin });
+      assert.equal(otherOrigin.status, 403);
+      const otherHost = await upgrade({
+        Host: 'other.invalid',
+        Origin: 'http://other.invalid',
+      });
+      assert.equal(otherHost.status, 403);
+
+      const result = await upgrade({});
+      assert.equal(result.status, 101);
+      const disconnected = once(result.socket, 'close');
+      result.socket.resume();
+      await new Promise((resolve) => watchServer.close(resolve));
+      await disconnected;
+    } finally {
+      if (watchServer.listening)
+        await new Promise((resolve) => watchServer.close(resolve));
+    }
+  },
+);

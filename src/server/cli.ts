@@ -11,13 +11,14 @@ import {
 
 const HELP = `${PRODUCT_NAME} — the file viewer for agent-driven development
 
-Usage: ${PRODUCT_NAME} [--root PATH] [--host HOST] [--port PORT] [--watch] [--allow-html-network] [--office-converter PATH]
+Usage: ${PRODUCT_NAME} [--root PATH] [--host HOST] [--port PORT] [--no-watch] [--allow-html-network] [--office-converter PATH]
 
   --root PATH   Project directory (default: current working directory)
   --host HOST   Bind address (default: 127.0.0.1)
   --port PORT   HTTP port, 0 for a free port (default: a port derived from
                 the project path, or a free port if that one is unavailable)
-  --watch       Refresh files and previews when project files change
+  --watch       Watch for project file changes (default)
+  --no-watch    Disable automatic file updates
   --allow-html-network  Allow HTML previews to run remote scripts and make network requests
   --office-converter PATH  ibisOffice or LibreOffice executable for Office previews
                 (default: ibisOffice, then soffice/libreoffice, found on PATH)
@@ -37,13 +38,14 @@ async function main(): Promise<void> {
       root: { type: 'string' },
       host: { type: 'string', default: '127.0.0.1' },
       port: { type: 'string' },
-      watch: { type: 'boolean', default: false },
+      watch: { type: 'boolean' },
       'allow-html-network': { type: 'boolean', default: false },
       'office-converter': { type: 'string' },
       help: { type: 'boolean', short: 'h' },
       version: { type: 'boolean', short: 'v' },
     },
     strict: true,
+    allowNegative: true,
     allowPositionals: false,
   });
   if (values.help) {

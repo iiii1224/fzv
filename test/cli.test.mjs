@@ -54,14 +54,33 @@ async function occupy(port) {
   return server;
 }
 
-test('default port follows the project path', async () => {
+test('defaults to a project-specific port with file watching enabled', async () => {
   const fixture = await createFixture();
   const { child, ready } = start([], fixture.root);
   try {
     const { project } = await Catalog.create(fixture.root);
     const result = await ready;
     assert.equal(result.port, projectPort(project.id), result.stderr);
-    assert.equal((await fetch(`http://127.0.0.1:${result.port}/`)).status, 200);
+    const url = `http://127.0.0.1:${result.port}`;
+    assert.equal((await fetch(url)).status, 200);
+    const projectInfo = await (await fetch(`${url}/api/project`)).json();
+    assert.equal(projectInfo.watch, true);
+  } finally {
+    await stop(child);
+    await fixture.cleanup();
+  }
+});
+
+test('--no-watch disables file watching', async () => {
+  const fixture = await createFixture();
+  const { child, ready } = start(['--port', '0', '--no-watch'], fixture.root);
+  try {
+    const { port, stderr } = await ready;
+    assert.ok(port > 0, stderr);
+    const url = `http://127.0.0.1:${port}/api`;
+    const project = await (await fetch(`${url}/project`)).json();
+    assert.equal(project.watch, false);
+    assert.equal((await fetch(`${url}/events`)).status, 404);
   } finally {
     await stop(child);
     await fixture.cleanup();

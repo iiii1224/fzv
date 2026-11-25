@@ -38,6 +38,7 @@ export interface EditorTab {
   pane: PreviewPane;
   element: HTMLElement;
   button: HTMLButtonElement;
+  updateIndicator: HTMLElement;
   mode: PreviewMode;
   revision: number;
   group: EditorGroup;
@@ -317,6 +318,11 @@ export class Workspace {
       description.textContent = `(${STAGE_LABELS[diff.stage][1]})`;
       button.append(description);
     }
+    const updateIndicator = icon('bell-dot');
+    updateIndicator.classList.add('tab-update-indicator');
+    updateIndicator.title = 'File updated';
+    updateIndicator.hidden = true;
+    button.append(updateIndicator);
     const tab: EditorTab = {
       id,
       file,
@@ -325,6 +331,7 @@ export class Workspace {
       mode,
       element,
       button,
+      updateIndicator,
       pane: this.createPane(file, 0, mode, diff),
       revision: 0,
     };
@@ -397,7 +404,7 @@ export class Workspace {
     if (existing) {
       if (existing.diff!.originalPath !== change.originalPath) {
         existing.diff!.originalPath = change.originalPath;
-        this.reload(existing);
+        this.reloadPane(existing);
       }
       this.activate(existing);
       return;
@@ -434,7 +441,31 @@ export class Workspace {
 
   /** Reloads diff tabs after Source Control status changes, such as staging. */
   reloadDiffs(): void {
-    for (const tab of this.tabs) if (tab.diff) this.reload(tab);
+    const diffs = this.tabs.filter((tab) => tab.diff);
+    for (const tab of diffs) this.reloadPane(tab);
+    if (diffs.length) this.render(false);
+  }
+
+  projectChanged(paths: string[] | null): void {
+    let reloaded = false;
+    for (const tab of this.tabs) {
+      const updated =
+        paths === null ||
+        paths.some(
+          (path) =>
+            tab.file.path === path || tab.file.path.startsWith(`${path}/`),
+        );
+      if (updated && tab.diff?.stage !== 'index') {
+        tab.updateIndicator.hidden = false;
+        tab.button.setAttribute('aria-description', tab.updateIndicator.title);
+      }
+      // HTML and Markdown viewers can embed other files in the project.
+      if (updated || (tab.mode === 'viewer' && hasViewer(tab.file))) {
+        this.reloadPane(tab);
+        reloaded = true;
+      }
+    }
+    if (reloaded) this.render(false);
   }
 
   navigateChange(direction: 1 | -1): boolean {
@@ -571,11 +602,17 @@ export class Workspace {
 
   reload(tab = this.activeTab): void {
     if (!tab) return;
+    tab.updateIndicator.hidden = true;
+    tab.button.removeAttribute('aria-description');
+    this.reloadPane(tab);
+    this.render();
+  }
+
+  private reloadPane(tab: EditorTab): void {
     tab.pane.dispose();
     tab.revision = ++this.revision;
     tab.pane = this.createPane(tab.file, tab.revision, tab.mode, tab.diff);
     this.mountPane(tab);
-    this.render();
   }
   private setMode(tab: EditorTab | null, mode: PreviewMode): void {
     if (tab?.diff || !tab?.pane.setMode || !hasViewer(tab.file)) return;

@@ -17,7 +17,7 @@ import { GitRepository } from './git.js';
 import { OfficeConversionError, OfficeRenderer } from './office.js';
 import type { OfficeConverter } from './office.js';
 import { installNavigation } from '../navigation.js';
-import type { ProjectChange } from '../shared.js';
+import { WatchSockets } from './watch-socket.js';
 
 const UI_ROOT = fileURLToPath(new URL('../client/', import.meta.url));
 const UI_CSP =
@@ -195,45 +195,31 @@ export async function createViewer(options: ViewerOptions) {
   const hosts = allowedHosts(options.host ?? '127.0.0.1');
   const uiRoot = await realpath(options.uiRoot ?? UI_ROOT);
   const allowHtmlNetwork = options.allowHtmlNetwork ?? false;
-  const watchEnabled = options.watch ?? false;
+  const watchEnabled = options.watch ?? true;
   const previewCsp = allowHtmlNetwork ? NETWORK_PREVIEW_CSP : PREVIEW_CSP;
   const office = options.officeConverter
     ? new OfficeRenderer(options.officeConverter)
     : undefined;
   const git = options.git ? new GitRepository(options.git, catalog.root) : null;
-  const eventClients = new Set<ServerResponse>();
+  const watchSockets = new WatchSockets();
   let reloadTimer: NodeJS.Timeout | undefined;
-  // Unknown or excessive changes are sent as null so clients refresh every tab.
+  // An unknown filename or a large batch may affect any tab.
   let changedPaths: Set<string> | null = new Set();
   const watcher = watchEnabled
     ? watchFiles(
         catalog.root,
-        { recursive: true, encoding: 'utf8' },
+        { recursive: true, encoding: 'utf8', persistent: false },
         (_event, filename) => {
           const relative = filename?.split(path.sep).join('/');
           if (relative && !isVisibleRelative(relative)) return;
           if (!relative || (changedPaths && changedPaths.size >= 256))
             changedPaths = null;
           else changedPaths?.add(relative);
-          clearTimeout(reloadTimer);
-          reloadTimer = setTimeout(() => {
+          reloadTimer ??= setTimeout(() => {
             reloadTimer = undefined;
-            const change: ProjectChange = {
-              paths: changedPaths && [...changedPaths],
-            };
+            watchSockets.broadcast(changedPaths && [...changedPaths]);
             changedPaths = new Set();
-            const message = `event: change\ndata: ${JSON.stringify(change)}\n\n`;
-            for (const client of eventClients) {
-              if (client.destroyed) {
-                eventClients.delete(client);
-                continue;
-              }
-              if (!client.write(message)) {
-                eventClients.delete(client);
-                client.end();
-              }
-            }
-          }, 100);
+          }, 100).unref();
         },
       )
     : undefined;
@@ -295,36 +281,14 @@ export async function createViewer(options: ViewerOptions) {
           reply(req, res, 404, 'text/plain; charset=utf-8', 'Not found\n');
           return;
         }
-        if (req.method !== 'GET') {
-          res.setHeader('Allow', 'GET');
-          reply(
-            req,
-            res,
-            405,
-            'text/plain; charset=utf-8',
-            'Method not allowed\n',
-          );
-          return;
-        }
-        if (req.headers.origin && req.headers.origin !== origin.origin) {
-          reply(
-            req,
-            res,
-            403,
-            'text/plain; charset=utf-8',
-            'Origin not allowed\n',
-          );
-          return;
-        }
-        res.writeHead(200, {
-          'Content-Type': 'text/event-stream; charset=utf-8',
-          'Cache-Control': 'no-cache, no-transform',
-          Connection: 'keep-alive',
-          'X-Accel-Buffering': 'no',
-        });
-        res.write(': connected\n\n');
-        eventClients.add(res);
-        res.on('close', () => eventClients.delete(res));
+        res.setHeader('Upgrade', 'websocket');
+        reply(
+          req,
+          res,
+          426,
+          'text/plain; charset=utf-8',
+          'WebSocket required\n',
+        );
         return;
       }
       if (
@@ -538,14 +502,24 @@ export async function createViewer(options: ViewerOptions) {
       );
     }
   });
+  if (watcher) {
+    server.on('upgrade', (req, socket, head) => {
+      if (server.listening) watchSockets.upgrade(req, socket, head, hosts);
+      else socket.destroy();
+    });
+    // HTTP shutdown waits for upgraded sockets without closing them.
+    const close = server.close.bind(server);
+    server.close = (callback) => {
+      watchSockets.close();
+      return close(callback);
+    };
+  }
   server.requestTimeout = 30_000;
   server.headersTimeout = 10_000;
   server.on('close', () => {
     watcher?.close();
     void office?.close();
     clearTimeout(reloadTimer);
-    for (const client of eventClients) client.end();
-    eventClients.clear();
   });
   watcher?.on('error', (error) => {
     watcher.close();
